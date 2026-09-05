@@ -1,0 +1,29 @@
+a(b() + c(d(123, 456), 3) + 4) * 2
+
+1. find deepest call
+    a(b() + c(d(123, 456), 3) + 4) * 2
+    ^0^1    ^1^2
+    so the deepest is d() with weight 2
+
+2. replace these calls with IFC (InlineFunctionCall)
+    starting from d()
+
+    collecting arguments:
+    d(123, 456)
+    I A1   A2
+
+    creating IFC:
+    InlineFunctionCall {
+        name: d
+        args: [[123], [456]]
+    }
+
+    replacing entire d():
+    a(b() + c(IFC, 3) + 4) * 2
+
+    and recursively...
+    > a(IFC + c(IFC, 3) + 4) * 2
+    > a(IFC + IFC + 4) * 2
+    > IFC * 2
+    and now it's ready!
+    
