@@ -73,30 +73,6 @@ struct TypedIdentifier {
     pub ty: String
 }
 
-// helper struct for use in `collect_expr!`
-struct InlineFunctionCall {
-    name: String,
-    args: Vec<Vec<Token>>
-}
-
-impl InlineFunctionCall {
-    #[inline]
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            args: Vec::new()
-        }
-    }
-
-    #[inline]
-    pub fn into_token(self) -> TokenKind {
-        TokenKind::InlineFunctionCall {
-            name: self.name,
-            args: self.args
-        }
-    }
-}
-
 #[repr(u8)]
 #[derive(Debug)]
 enum CommandKind {
@@ -140,6 +116,7 @@ pub enum ErrorKind {
     UnclosedString,
     ExpectedTokens,
     RedundantTokens,
+    EmptyExpression,
 }
 
 struct Parser {
@@ -452,14 +429,140 @@ impl Parser {
         }
     }
 
-    pub fn parse_tokens(&self, tokens: Vec<Vec<Token>>) -> Result<Vec<Command>, ErrorKind> {
-        let mut commands: Vec<Command> = Vec::new();
+    pub fn check_expression(&self, expr: &[Token], line_pos: usize) -> Result<(), ErrorKind> {
         let mut error: Option<ErrorKind> = None;
 
         macro_rules! try_set_error {
             ($kind:ident) => {
                 if error.is_none() {
                     error = Some(ErrorKind::$kind);
+                }
+            };
+        }
+
+        macro_rules! print_error {
+            ($err_kind:ident, $msg:expr) => {{
+                eprintln!("[{}]: line {}:", self.filename, line_pos);
+                eprintln!("  error: {}", $msg);
+                try_set_error!($err_kind);
+            }};
+        }
+
+        if expr.is_empty() {
+            print_error!(EmptyExpression, "empty expression");
+        }
+
+        /*
+            expecting...
+            if true:  number, identifier or open paren
+            if false: operator or closed paren
+        */
+        let mut expecting_number = true;
+
+        macro_rules! invert {
+            () => {
+                expecting_number = !expecting_number;
+            };
+        }
+
+        macro_rules! malformed {
+            () => {{
+                let what = if expecting_number {
+                    "number, identifier, function call or open paren"
+                } else {
+                    "operator or closed paren"
+                };
+                print_error!(ExpectedTokens, format!("malformed expression: expected {what}"));
+            }};
+        }
+
+        macro_rules! assert_malformed {
+            ($cond:expr) => {
+                if $cond {
+                    invert!();
+                } else {
+                    malformed!();
+                }
+            };
+        }
+        
+        /*
+            increments on open paren,
+            decrements on closed paren
+        */
+        let mut paren_counter: u8 = 0;
+        
+        for token in expr {
+            use TokenKind::*;
+
+            // 1. check for malformness
+            match token.kind {
+                Number(..) | Identifier(..) => {
+                    assert_malformed!(expecting_number);
+                }
+
+                OpenParen => {
+                    // same as `assert_malformed!`, but without `invert!`
+                    if !expecting_number {
+                        malformed!();
+                    }
+                }
+
+                Add | Sub | Mul | Div | DoubleEquality | ClosedParen => {
+                    assert_malformed!(!expecting_number);
+                }
+
+                _ => {
+                    malformed!();
+                }
+            }
+
+            // 2. count parenthesis
+            match token.kind {
+                OpenParen => {
+                    if let Some(sum) = paren_counter.checked_add(1)
+                    && sum < MAX_EXPRESSION_DEPTH {
+                        paren_counter = sum;
+                    } else {
+                        print_error!(ExpectedTokens, "too many nested parentheses");
+                    }
+                }
+
+                ClosedParen => {
+                    if let Some(diff) = paren_counter.checked_sub(1) {
+                        paren_counter = diff;
+                    } else {
+                        print_error!(ExpectedTokens, "unmatched closed paren ')'");
+                    }
+                }
+
+                _ => {}
+            }
+        }
+
+        if paren_counter > 0 {
+            print_error!(ExpectedTokens, "missing closed parentheses ')'");
+        }
+        
+        if expecting_number {
+            malformed!();
+        }
+
+        if let Some(error) = error {
+            Err(error)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn parse_tokens(&self, tokens: Vec<Vec<Token>>) -> Result<Vec<Command>, ErrorKind> {
+        let mut commands: Vec<Command> = Vec::new();
+        let mut error: Option<ErrorKind> = None;
+
+        macro_rules! try_set_error {
+            ($kind:expr) => {
+                if error.is_none() {
+                    error = Some($kind);
                 }
             };
         }
@@ -474,12 +577,18 @@ impl Parser {
 
             let new_command: Option<Command>;
 
+            macro_rules! interrupt_line {
+                () => {
+                    continue 'tokens;
+                };
+            }
+
             macro_rules! print_error {
                 ($err_kind:ident, $msg:expr) => {{
                     eprintln!("[{}]: line {}:", self.filename, line_pos);
                     eprintln!("  error: {}", $msg);
-                    try_set_error!($err_kind);
-                    continue 'tokens;
+                    try_set_error!(ErrorKind::$err_kind);
+                    interrupt_line!();
                 }};
             }
 
@@ -560,100 +669,9 @@ impl Parser {
                         expr.push(token.clone());
                     }
 
-                    /*
-                        expecting...
-                        if true:  number, identifier or open paren
-                        if false: operator or closed paren
-                    */
-                    let mut expecting_number = true;
-
-                    macro_rules! invert {
-                        () => {
-                            expecting_number = !expecting_number;
-                        };
-                    }
-
-                    macro_rules! malformed {
-                        () => {{
-                            let what = if expecting_number {
-                                "number, identifier or open paren"
-                            } else {
-                                "operator or closed paren"
-                            };
-                            print_error!(ExpectedTokens, format!("malformed expression: expected {what}"));
-                        }};
-                    }
-
-                    macro_rules! assert_malformed {
-                        ($cond:expr) => {
-                            if $cond {
-                                invert!();
-                            } else {
-                                malformed!();
-                            }
-                        };
-                    }
-                    
-                    /*
-                        increments on open paren,
-                        decrements on closed paren
-                    */
-                    let mut paren_counter: u8 = 0;
-                    
-                    for token in expr.iter() {
-                        use TokenKind::*;
-
-                        // 1. check for malformness
-                        match token.kind {
-                            Number(..) | Identifier(..) => {
-                                assert_malformed!(expecting_number);
-                            }
-
-                            OpenParen => {
-                                // same as `assert_malformed!`, but without `invert!`
-                                if !expecting_number {
-                                    malformed!();
-                                }
-                            }
-
-                            Add | Sub | Mul | Div | DoubleEquality | ClosedParen => {
-                                assert_malformed!(!expecting_number);
-                            }
-
-                            _ => {
-                                malformed!();
-                            }
-                        }
-
-                        // 2. count parenthesis
-                        match token.kind {
-                            OpenParen => {
-                                if let Some(sum) = paren_counter.checked_add(1)
-                                && sum < MAX_EXPRESSION_DEPTH {
-                                    paren_counter = sum;
-                                } else {
-                                    print_error!(ExpectedTokens, "too many nested parentheses");
-                                }
-                            }
-
-                            ClosedParen => {
-                                if let Some(diff) = paren_counter.checked_sub(1) {
-                                    paren_counter = diff;
-                                } else {
-                                    print_error!(ExpectedTokens, "unmatched closed paren ')'");
-                                }
-                            }
-
-                            _ => {}
-                        }
-                    }
-
-                    if paren_counter > 0 {
-                        print_error!(ExpectedTokens, "missing closed parentheses ')'");
-                    }
-                    
-                    if expecting_number {
-                        malformed!();
+                    if let Err(err) = self.check_expression(&expr, line_pos) {
+                        try_set_error!(err);
+                        interrupt_line!();
                     }
 
                     expr
@@ -837,38 +855,85 @@ impl Parser {
                                 let expr: Vec<Token> = {
                                     let mut expr: Vec<Token> = Vec::new();
                                     
-                                    for token in args_tokens {
+                                    for token in part {
                                         expr.push(token.clone());
                                     }
-
-                                    /*
-                                    // holy memory pig
-                                    let mut expr2: Vec<Token> = expr.clone();
-                                    let mut ifc_stack: Vec<InlineFunctionCall> = Vec::new();
-                                    */
                                     
-                                    let mut peeker = expr.iter().peekable();
-
-                                    /*
-                                        0   : no IFC
-                                        1.. : bigger = deeper
-                                    */
-
                                     let mut depth_stack: Vec<u8> = Vec::new();
                                     let mut max_depth: u8 = 0;
+                                    
+                                    /*
+                                        стек глубины `depth_stack` имеет одинаковый размер с `expr`
+                                        и показывает, в каких местах начинается IFC.
+
+                                        допустимые значения глубины:
+                                            0   : нет IFC
+                                            1.. : больше = глубже
+                                        
+                                        сначала обрабатываются самые глубокие IFC (максимально
+                                        достигнутая глубина берётся из `max_depth`).
+
+                                        пример:
+                                            FUNC( 1 + (3 * 3) + SOMETHING() )
+                                        D:  1   0 0 0 00 0 00 0 2           0
+                                    */
 
                                     {
+                                        let mut peeker = expr.iter().peekable();
+
                                         let mut last_depth: u8 = 0;
-                                        let mut paren_stack: Vec<u8> = vec![0];
+                                        let mut paren_stack: Vec<u8> = Vec::new();
+
+                                        macro_rules! get_last_paren_counter {
+                                            () => {
+                                                paren_stack.last_mut().expect("paren counter must exist")
+                                            };
+                                        }
+                                        
+                                        /*
+                                            `paren_stack` помогает определять, где конкретно заканчивается IFC.
+                                            после каждого `I(` создаётся новый счетчик через `push`, и самый
+                                            последний счётчик считается активным.
+
+                                            пример:
+                                                FUNC( 1 + (3 * 3) )
+                                            PC: ____0_____1_____0_X
+                                        */
 
                                         while let Some(token) = peeker.next() {
-                                            let paren_counter = paren_stack.last_mut().expect("paren counter must exist");
+                                            let parsing_ifc = !paren_stack.is_empty();
 
-                                            let mut depth: u8 = 0;
+                                            macro_rules! push_ifc {
+                                                () => {
+                                                    last_depth += 1;
+                                                    depth_stack.push(last_depth);
 
+                                                    paren_stack.push(0);
+
+                                                    // skip OpenParen
+                                                    peeker.next();
+                                                    depth_stack.push(0);
+
+                                                    continue;
+                                                };
+                                            }
+
+                                            macro_rules! pop_ifc {
+                                                () => {
+                                                    last_depth -= 1;
+                                                    depth_stack.push(last_depth);
+
+                                                    paren_stack.pop();
+
+                                                    continue;
+                                                };
+                                            }
+                                            
                                             use TokenKind::*;
                                             match &token.kind {
-                                                OpenParen => {
+                                                OpenParen if parsing_ifc => {
+                                                    let paren_counter = get_last_paren_counter!();
+
                                                     if let Some(sum) = paren_counter.checked_add(1)
                                                     && sum < MAX_EXPRESSION_DEPTH {
                                                         *paren_counter = sum;
@@ -877,31 +942,26 @@ impl Parser {
                                                     }
                                                 }
 
-                                                ClosedParen => {
+                                                ClosedParen if parsing_ifc => {
+                                                    let paren_counter = get_last_paren_counter!();
+
                                                     if let Some(diff) = paren_counter.checked_sub(1) {
                                                         *paren_counter = diff;
                                                     } else {
-                                                        // print_error!(ExpectedTokens, "unmatched closed paren ')'");
-
-                                                        last_depth -= 1;
-                                                        depth = last_depth;
+                                                        pop_ifc!();
                                                     }
                                                 }
 
                                                 Identifier(..)
                                                     if peeker.peek().is_some_and(|tok| tok.kind == OpenParen) => {
-                                                        // skip OpenParen
-                                                        peeker.next();
-                                                        last_depth += 1;
-                                                        depth = last_depth;
+                                                        push_ifc!();
                                                     }
 
-                                                _ => {
-                                                    // handled later
-                                                }
+                                                _ => {}
                                             }
 
-                                            depth_stack.push(depth);
+                                            // default depth (no IFC)
+                                            depth_stack.push(0);
                                         }
 
                                         for depth in depth_stack.iter() {
@@ -912,103 +972,123 @@ impl Parser {
                                         }
                                     }
 
+                                    assert_eq!(depth_stack.len(), expr.len(), "`depth_stack` and `expr` must have equal lengths");
+
                                     if max_depth > 0 {
-                                    }
+                                        /*
+                                            holy memory pig. split in two parts:
 
-                                    /*
-                                        expecting...
-                                        if true:  number, identifier or open paren
-                                        if false: operator or closed paren
-                                    */
-                                    let mut expecting_number = true;
+                                            A: read-only
+                                            B: mutable
+                                        */
+                                        
+                                        let mut expr_a: Vec<Token> = expr.clone();
+                                        let mut expr_b: Vec<Token> = Vec::new();
 
-                                    macro_rules! invert {
-                                        () => {
-                                            expecting_number = !expecting_number;
-                                        };
-                                    }
+                                        for target_depth in max_depth..=0 {
+                                            let mut peeker = depth_stack.iter().peekable();
+                                            let mut dpos: usize = 0;
 
-                                    macro_rules! malformed {
-                                        () => {{
-                                            let what = if expecting_number {
-                                                "number, identifier or open paren"
-                                            } else {
-                                                "operator or closed paren"
-                                            };
-                                            print_error!(ExpectedTokens, format!("malformed expression: expected {what}"));
-                                        }};
-                                    }
-
-                                    macro_rules! assert_malformed {
-                                        ($cond:expr) => {
-                                            if $cond {
-                                                invert!();
-                                            } else {
-                                                malformed!();
-                                            }
-                                        };
-                                    }
-                                    
-                                    /*
-                                        increments on open paren,
-                                        decrements on closed paren
-                                    */
-                                    let mut paren_counter: u8 = 0;
-                                    
-                                    for token in expr.iter() {
-                                        use TokenKind::*;
-
-                                        // 1. check for malformness
-                                        match token.kind {
-                                            Number(..) | Identifier(..) => {
-                                                assert_malformed!(expecting_number);
+                                            macro_rules! next {
+                                                () => {{
+                                                    let next = peeker.next();
+                                                    if next.is_some() {
+                                                        dpos += 1;
+                                                    }
+                                                    next
+                                                }};
                                             }
 
-                                            OpenParen => {
-                                                // same as `assert_malformed!`, but without `invert!`
-                                                if !expecting_number {
-                                                    malformed!();
+                                            while let Some(depth) = next!() {
+                                                let token = expr_a[dpos].clone();
+
+                                                if *depth == target_depth {
+                                                    let name = if let TokenKind::Identifier(ident) = token.kind {
+                                                        ident
+                                                    } else {
+                                                        panic!("depth marker not pointing to an Identifier");
+                                                    };
+
+                                                    let mut args: Vec<Vec<Token>> = vec![
+                                                        Vec::new()
+                                                    ];
+
+                                                    /*
+                                                        increments on open paren,
+                                                        decrements on closed paren
+                                                    */
+                                                    let mut paren_counter: u8 = 0;
+
+                                                    // skip OpenParen
+                                                    next!();
+
+                                                    while next!().is_some() {
+                                                        let expr = args.last_mut().unwrap();
+                                                        let token = expr_a[dpos].clone();
+
+                                                        use TokenKind::*;
+                                                        match token.kind {
+                                                            OpenParen => {
+                                                                if let Some(sum) = paren_counter.checked_add(1)
+                                                                && sum < MAX_EXPRESSION_DEPTH {
+                                                                    paren_counter = sum;
+                                                                } else {
+                                                                    print_error!(ExpectedTokens, "too many nested parentheses");
+                                                                }
+                                                            }
+
+                                                            ClosedParen => {
+                                                                if let Some(diff) = paren_counter.checked_sub(1) {
+                                                                    paren_counter = diff;
+                                                                } else {
+                                                                    break;
+                                                                }
+                                                            }
+
+                                                            Comma => {
+                                                                args.push(Vec::new());
+                                                                continue;
+                                                            }
+
+                                                            _ => {}
+                                                        }
+
+                                                        expr.push(token);
+                                                    }
+
+                                                    // this gives scary error:
+                                                    // let args = args.split(|tok| tok.kind == TokenKind::Comma).collect();
+
+                                                    for expr in args.iter() {
+                                                        if let Err(err) = self.check_expression(expr, line_pos) {
+                                                            try_set_error!(err);
+                                                            interrupt_line!();
+                                                        }
+                                                    }
+
+                                                    let ifc = Token {
+                                                        kind: TokenKind::InlineFunctionCall {
+                                                            name, args
+                                                        },
+                                                        line_pos: token.line_pos
+                                                    };
+
+                                                    expr_b.push(ifc);
+                                                } else {
+                                                    expr_b.push(token);
                                                 }
                                             }
 
-                                            Add | Sub | Mul | Div | DoubleEquality | ClosedParen => {
-                                                assert_malformed!(!expecting_number);
-                                            }
-
-                                            _ => {
-                                                malformed!();
-                                            }
+                                            expr_a = expr_b;
+                                            expr_b = Vec::new();
                                         }
 
-                                        // 2. count parenthesis
-                                        match token.kind {
-                                            OpenParen => {
-                                                if let Some(sum) = paren_counter.checked_add(1)
-                                                && sum < MAX_EXPRESSION_DEPTH {
-                                                    paren_counter = sum;
-                                                } else {
-                                                    print_error!(ExpectedTokens, "too many nested parentheses");
-                                                }
-                                            }
-
-                                            ClosedParen => {
-                                                if let Some(diff) = paren_counter.checked_sub(1) {
-                                                    paren_counter = diff;
-                                                } else {
-                                                    print_error!(ExpectedTokens, "unmatched closed paren ')'");
-                                                }
-                                            }
-
-                                            _ => {}
-                                        }
+                                        expr = expr_a;
                                     }
 
-                                    if paren_counter > 0 {
-                                        print_error!(ExpectedTokens, "missing closed parentheses ')'");
-                                    }
-                                    
-                                    if expecting_number {
-                                        malformed!();
+                                    if let Err(err) = self.check_expression(&expr, line_pos) {
+                                        try_set_error!(err);
+                                        interrupt_line!();
                                     }
 
                                     expr
