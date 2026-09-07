@@ -808,7 +808,7 @@ impl Parser {
                         let mut expr_a: Vec<Token> = expr.clone();
                         let mut expr_b: Vec<Token> = Vec::new();
 
-                        for target_depth in max_depth..=0 {
+                        for target_depth in max_depth..0 {
                             let mut peeker = depth_stack.iter().peekable();
                             let mut dpos: usize = 0;
 
