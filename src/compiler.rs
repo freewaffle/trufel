@@ -555,6 +555,119 @@ impl Parser {
         }
     }
 
+    fn calculate_depths(&self, expr: &[Token], line_pos: usize) -> Vec<u8> {
+        let mut error: Option<ErrorKind> = None;
+
+        macro_rules! try_set_error {
+            ($kind:ident) => {
+                if error.is_none() {
+                    error = Some(ErrorKind::$kind);
+                }
+            };
+        }
+
+        macro_rules! print_error {
+            ($err_kind:ident, $msg:expr) => {{
+                eprintln!("[{}]: line {}:", self.filename, line_pos);
+                eprintln!("  error: {}", $msg);
+                try_set_error!($err_kind);
+            }};
+        }
+
+        if expr.is_empty() {
+            print_error!(EmptyExpression, "empty expression");
+        }
+        
+        let mut depth_stack: Vec<u8> = Vec::new();
+
+        let mut peeker = expr.iter().peekable();
+
+        let mut last_depth: u8 = 0;
+        let mut paren_stack: Vec<u8> = Vec::new();
+
+        macro_rules! get_last_paren_counter {
+            () => {
+                paren_stack.last_mut().expect("paren counter must exist")
+            };
+        }
+        
+        /*
+            `paren_stack` помогает определять, где конкретно заканчивается IFC.
+            после каждого `I(` создаётся новый счетчик через `push`, и самый
+            последний счётчик считается активным.
+
+            пример:
+                FUNC( 1 + (3 * 3) )
+            PC: ____0_____1_____0_X
+        */
+
+        while let Some(token) = peeker.next() {
+            let parsing_ifc = !paren_stack.is_empty();
+
+            macro_rules! push_ifc {
+                () => {
+                    last_depth += 1;
+                    depth_stack.push(last_depth);
+
+                    paren_stack.push(0);
+
+                    // skip OpenParen
+                    peeker.next();
+                    depth_stack.push(0);
+
+                    continue;
+                };
+            }
+
+            macro_rules! pop_ifc {
+                () => {
+                    last_depth -= 1;
+                    depth_stack.push(last_depth);
+
+                    paren_stack.pop();
+
+                    continue;
+                };
+            }
+            
+            use TokenKind::*;
+            match &token.kind {
+                OpenParen if parsing_ifc => {
+                    let paren_counter = get_last_paren_counter!();
+
+                    if let Some(sum) = paren_counter.checked_add(1)
+                    && sum < MAX_EXPRESSION_DEPTH {
+                        *paren_counter = sum;
+                    } else {
+                        print_error!(ExpectedTokens, "too many nested parentheses");
+                    }
+                }
+
+                ClosedParen if parsing_ifc => {
+                    let paren_counter = get_last_paren_counter!();
+
+                    if let Some(diff) = paren_counter.checked_sub(1) {
+                        *paren_counter = diff;
+                    } else {
+                        pop_ifc!();
+                    }
+                }
+
+                Identifier(..)
+                    if peeker.peek().is_some_and(|tok| tok.kind == OpenParen) => {
+                        push_ifc!();
+                    }
+
+                _ => {}
+            }
+
+            // default depth (no IFC)
+            depth_stack.push(0);
+        }
+
+        depth_stack
+    }
+
     pub fn parse_tokens(&self, tokens: Vec<Vec<Token>>) -> Result<Vec<Command>, ErrorKind> {
         let mut commands: Vec<Command> = Vec::new();
         let mut error: Option<ErrorKind> = None;
@@ -660,30 +773,15 @@ impl Parser {
 
             macro_rules! collect_expr {
                 ($tokens:expr) => {{
-                    /* let mut expr: Vec<Token> = Vec::new();
-                    
-                    for token in $tokens {
-                        /* if matches!(token.kind, TokenKind::Identifier(..))
-                        && peeker.peek().is_some_and(|tok| tok.kind == TokenKind::OpenParen) {} */
-
-                        expr.push(token.clone());
-                    }
-
-                    if let Err(err) = self.check_expression(&expr, line_pos) {
-                        try_set_error!(err);
-                        interrupt_line!();
-                    }
-
-                    expr */
-
                     let mut expr: Vec<Token> = Vec::new();
                     
                     for token in $tokens {
                         expr.push(token.clone());
                     }
-                    
-                    let mut depth_stack: Vec<u8> = Vec::new();
-                    let mut max_depth: u8 = 0;
+
+                    if expr.is_empty() {
+                        print_error!(EmptyExpression, "empty expression");
+                    }
                     
                     /*
                         стек глубины `depth_stack` имеет одинаковый размер с `expr`
@@ -700,102 +798,21 @@ impl Parser {
                             FUNC( 1 + (3 * 3) + SOMETHING() )
                         D:  1   0 0 0 00 0 00 0 2           0
                     */
+                    
+                    let mut depth_stack: Vec<u8> = self.calculate_depths(&expr, line_pos);
 
-                    {
-                        let mut peeker = expr.iter().peekable();
+                    let mut max_depth: u8 = 0;
 
-                        let mut last_depth: u8 = 0;
-                        let mut paren_stack: Vec<u8> = Vec::new();
-
-                        macro_rules! get_last_paren_counter {
-                            () => {
-                                paren_stack.last_mut().expect("paren counter must exist")
-                            };
-                        }
-                        
-                        /*
-                            `paren_stack` помогает определять, где конкретно заканчивается IFC.
-                            после каждого `I(` создаётся новый счетчик через `push`, и самый
-                            последний счётчик считается активным.
-
-                            пример:
-                                FUNC( 1 + (3 * 3) )
-                            PC: ____0_____1_____0_X
-                        */
-
-                        while let Some(token) = peeker.next() {
-                            let parsing_ifc = !paren_stack.is_empty();
-
-                            macro_rules! push_ifc {
-                                () => {
-                                    last_depth += 1;
-                                    depth_stack.push(last_depth);
-
-                                    paren_stack.push(0);
-
-                                    // skip OpenParen
-                                    peeker.next();
-                                    depth_stack.push(0);
-
-                                    continue;
-                                };
-                            }
-
-                            macro_rules! pop_ifc {
-                                () => {
-                                    last_depth -= 1;
-                                    depth_stack.push(last_depth);
-
-                                    paren_stack.pop();
-
-                                    continue;
-                                };
-                            }
-                            
-                            use TokenKind::*;
-                            match &token.kind {
-                                OpenParen if parsing_ifc => {
-                                    let paren_counter = get_last_paren_counter!();
-
-                                    if let Some(sum) = paren_counter.checked_add(1)
-                                    && sum < MAX_EXPRESSION_DEPTH {
-                                        *paren_counter = sum;
-                                    } else {
-                                        print_error!(ExpectedTokens, "too many nested parentheses");
-                                    }
-                                }
-
-                                ClosedParen if parsing_ifc => {
-                                    let paren_counter = get_last_paren_counter!();
-
-                                    if let Some(diff) = paren_counter.checked_sub(1) {
-                                        *paren_counter = diff;
-                                    } else {
-                                        pop_ifc!();
-                                    }
-                                }
-
-                                Identifier(..)
-                                    if peeker.peek().is_some_and(|tok| tok.kind == OpenParen) => {
-                                        push_ifc!();
-                                    }
-
-                                _ => {}
-                            }
-
-                            // default depth (no IFC)
-                            depth_stack.push(0);
-                        }
-
-                        for depth in depth_stack.iter() {
-                            let depth = *depth;
-                            if depth > max_depth {
-                                max_depth = depth;
-                            }
+                    for depth in depth_stack.iter() {
+                        let depth = *depth;
+                        if depth > max_depth {
+                            max_depth = depth;
                         }
                     }
 
-                    if DEBUG {
+                    let has_ifcs = max_depth > 0;
+
+                    if DEBUG && has_ifcs {
                         println!("[{line_pos}]:");
 
                         print!("  depth: ");
@@ -807,7 +824,7 @@ impl Parser {
 
                     assert_eq!(depth_stack.len(), expr.len(), "`depth_stack` and `expr` must have equal lengths");
 
-                    if max_depth > 0 {
+                    if has_ifcs {
                         /*
                             holy memory pig. split in two parts:
 
@@ -832,9 +849,15 @@ impl Parser {
                                 }};
                             }
 
+                            macro_rules! pos {
+                                () => {
+                                    dpos.checked_sub(1).unwrap_or(0)
+                                }
+                            }
+
                             macro_rules! get_token_at_dpos {
                                 () => {
-                                    expr_a[dpos.checked_sub(1).unwrap_or(0)].clone()
+                                    expr_a[pos!()].clone()
                                 }
                             }
 
@@ -920,17 +943,20 @@ impl Parser {
 
                             expr_a = expr_b;
                             expr_b = Vec::new();
+
+                            depth_stack = self.calculate_depths(&expr_a, line_pos);
+                            assert_eq!(depth_stack.len(), expr_a.len(), "`depth_stack` and `expr_a` must have equal lengths");
                         }
 
                         expr = expr_a;
                     }
 
-                    if DEBUG {
+                    if DEBUG && has_ifcs {
                         println!("[{line_pos}]:");
 
                         print!("  expr: ");
                         for token in expr.iter() {
-                            print!("{:?}, ", token.kind);
+                            print!("{:#?}, ", token.kind);
                         }
                         println!();
                     }
