@@ -429,7 +429,7 @@ impl Parser {
         }
     }
 
-    pub fn check_expression(&self, expr: &[Token], line_pos: usize) -> Result<(), ErrorKind> {
+    fn check_expression(&self, expr: &[Token], line_pos: usize) -> Result<(), ErrorKind> {
         let mut error: Option<ErrorKind> = None;
 
         macro_rules! try_set_error {
