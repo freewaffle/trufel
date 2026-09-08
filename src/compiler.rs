@@ -795,6 +795,16 @@ impl Parser {
                         }
                     }
 
+                    if DEBUG {
+                        println!("[{line_pos}]:");
+
+                        print!("  depth: ");
+                        for depth in depth_stack.iter() {
+                            print!("{:?}, ", depth);
+                        }
+                        println!();
+                    }
+
                     assert_eq!(depth_stack.len(), expr.len(), "`depth_stack` and `expr` must have equal lengths");
 
                     if max_depth > 0 {
@@ -808,7 +818,7 @@ impl Parser {
                         let mut expr_a: Vec<Token> = expr.clone();
                         let mut expr_b: Vec<Token> = Vec::new();
 
-                        for target_depth in max_depth..0 {
+                        for target_depth in (1..=max_depth).rev() {
                             let mut peeker = depth_stack.iter().peekable();
                             let mut dpos: usize = 0;
 
@@ -822,14 +832,20 @@ impl Parser {
                                 }};
                             }
 
+                            macro_rules! get_token_at_dpos {
+                                () => {
+                                    expr_a[dpos.checked_sub(1).unwrap_or(0)].clone()
+                                }
+                            }
+
                             while let Some(depth) = next!() {
-                                let token = expr_a[dpos].clone();
+                                let token = get_token_at_dpos!();
 
                                 if *depth == target_depth {
                                     let name = if let TokenKind::Identifier(ident) = token.kind {
                                         ident
                                     } else {
-                                        panic!("depth marker not pointing to an Identifier");
+                                        panic!("depth marker not pointing to an Identifier (got {:?})", token.kind);
                                     };
 
                                     let mut args: Vec<Vec<Token>> = vec![
@@ -847,7 +863,7 @@ impl Parser {
 
                                     while next!().is_some() {
                                         let expr = args.last_mut().unwrap();
-                                        let token = expr_a[dpos].clone();
+                                        let token = get_token_at_dpos!();
 
                                         use TokenKind::*;
                                         match token.kind {
@@ -907,6 +923,16 @@ impl Parser {
                         }
 
                         expr = expr_a;
+                    }
+
+                    if DEBUG {
+                        println!("[{line_pos}]:");
+
+                        print!("  expr: ");
+                        for token in expr.iter() {
+                            print!("{:?}, ", token.kind);
+                        }
+                        println!();
                     }
 
                     if let Err(err) = self.check_expression(&expr, line_pos) {
@@ -1130,6 +1156,7 @@ pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorK
 
     if DEBUG {
         println!("------------ TOKENS ------------");
+
         for line in tokens.iter() {
             if let Some(tok) = line.first() {
                 print!("[{}] ", tok.line_pos);
@@ -1143,15 +1170,20 @@ pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorK
 
             println!();
         }
+
+        println!("--------------------------------\n");
     }
 
     let commands = compiler.parse_tokens(tokens)?;
     
     if DEBUG {
-        println!("------------ COMMANDS ------------");
+        println!("----------- COMMANDS -----------");
+
         for command in commands.iter() {
             println!("[{}] {:#?}", command.line_pos, command.kind);
         }
+
+        println!("--------------------------------\n");
     }
 
     Ok(Vec::new())
