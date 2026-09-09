@@ -1130,16 +1130,47 @@ impl Parser {
 
                         let mut args: Vec<Vec<Token>> = Vec::new();
                         
-                        let args_tokens = if let Some(tokens) = tokens.get(1..) {
-                            tokens
-                        } else {
-                            print_error!(ExpectedTokens, "expected expression");
-                        };
+                        if let Some(tokens) = tokens.get(1..) {
+                            let mut parts: Vec<Vec<Token>> = vec![Vec::new()];
 
-                        if !args_tokens.is_empty() {
-                            let args_parts = args_tokens.split(|tok| tok.kind == TokenKind::Comma);
+                            /*
+                                increments on open paren,
+                                decrements on closed paren
+                            */
+                            let mut paren_counter: u8 = 0;
 
-                            for part in args_parts {
+                            for token in tokens {
+                                use TokenKind::*;
+                                match token.kind {
+                                    OpenParen => {
+                                        if let Some(sum) = paren_counter.checked_add(1)
+                                        && sum < MAX_EXPRESSION_DEPTH {
+                                            paren_counter = sum;
+                                        } else {
+                                            print_error!(ExpectedTokens, "too many nested parentheses");
+                                        }
+                                    }
+
+                                    ClosedParen => {
+                                        if let Some(diff) = paren_counter.checked_sub(1) {
+                                            paren_counter = diff;
+                                        } else {
+                                            print_error!(ExpectedTokens, "unmatched closed paren ')'");
+                                        }
+                                    }
+
+                                    Comma if paren_counter == 0 => {
+                                        parts.push(Vec::new());
+                                    }
+
+                                    _ => {
+                                        let part = parts.last_mut().unwrap();
+                                        part.push(token.clone());
+                                    }
+                                }
+                            }
+
+                            for part in parts {
                                 if part.is_empty() {
                                     print_error!(ExpectedTokens, "expected expression");
                                 }
@@ -1148,7 +1179,9 @@ impl Parser {
 
                                 args.push(expr);
                             }
-                        }
+                        } else {
+                            print_error!(ExpectedTokens, "expected expression");
+                        };
                         
                         Some(command!(CommandKind::FunctionCall { name, args }))
                     }
