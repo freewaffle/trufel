@@ -497,7 +497,7 @@ impl Parser {
 
             // 1. check for malformness
             match token.kind {
-                Number(..) | Identifier(..) => {
+                Number(..) | Identifier(..) | InlineFunctionCall { .. } => {
                     assert_malformed!(expecting_number);
                 }
 
