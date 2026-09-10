@@ -22,7 +22,7 @@ fn main() {
         path.to_owned()
     } else {
         eprintln!("error: missing file name");
-        eprintln!("try executing: wf180 [FILENAME]");
+        eprintln!("try executing: trufel [FILENAME]");
         error_exit!();
     };
 
@@ -34,7 +34,7 @@ fn main() {
         }
     };
 
-    let mut this_magic = [0u8; 6];
+    let mut this_magic = [0u8; MAGIC_LEN];
     let bytes_read = match file.read(&mut this_magic) {
         Ok(bytes) => bytes,
         Err(err) => {
@@ -76,7 +76,7 @@ fn main() {
 fn main() {
     let (mut rl, rl_thread) = raylib::init()
         .size(640, 480)
-        .title("WF-180")
+        .title("Trufel")
         .build();
 
     while !rl.window_should_close() {
