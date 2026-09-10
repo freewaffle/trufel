@@ -470,7 +470,7 @@ impl Parser {
         macro_rules! malformed {
             () => {{
                 let what = if expecting_number {
-                    "number, identifier, function call or open paren"
+                    "number, identifier, function call, literal string or open paren"
                 } else {
                     "operator or closed paren"
                 };
@@ -499,7 +499,7 @@ impl Parser {
 
             // 1. check for malformness
             match token.kind {
-                Number(..) | Identifier(..) | InlineFunctionCall { .. } => {
+                Number(..) | Identifier(..) | InlineFunctionCall { .. } | String(..) => {
                     assert_malformed!(expecting_number);
                 }
 
