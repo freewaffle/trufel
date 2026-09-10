@@ -430,6 +430,8 @@ impl Parser {
     }
 
     fn check_expression(&self, expr: &[Token], line_pos: usize) -> Result<(), ErrorKind> {
+        println!(">>> {expr:#?}");
+
         let mut error: Option<ErrorKind> = None;
 
         macro_rules! try_set_error {
@@ -1161,27 +1163,30 @@ impl Parser {
 
                                     Comma if paren_counter == 0 => {
                                         parts.push(Vec::new());
+                                        continue;
                                     }
 
-                                    _ => {
-                                        let part = parts.last_mut().unwrap();
-                                        part.push(token.clone());
+                                    _ => {}
+                                }
+
+                                let part = parts.last_mut().unwrap();
+                                part.push(token.clone());
+                            }
+
+                            let is_empty = parts.len() == 1 && parts[0].is_empty();
+
+                            if !is_empty {
+                                for part in parts {
+                                    if part.is_empty() {
+                                        print_error!(ExpectedTokens, "expected expression");
                                     }
+
+                                    let expr: Vec<Token> = collect_expr!(part);
+
+                                    args.push(expr);
                                 }
                             }
-
-                            for part in parts {
-                                if part.is_empty() {
-                                    print_error!(ExpectedTokens, "expected expression");
-                                }
-
-                                let expr: Vec<Token> = collect_expr!(part);
-
-                                args.push(expr);
-                            }
-                        } else {
-                            print_error!(ExpectedTokens, "expected expression");
-                        };
+                        }
                         
                         Some(command!(CommandKind::FunctionCall { name, args }))
                     }
