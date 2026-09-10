@@ -430,7 +430,7 @@ impl Parser {
     }
 
     fn check_expression(&self, expr: &[Token], line_pos: usize) -> Result<(), ErrorKind> {
-        println!(">>> {expr:#?}");
+        println!("[check_expression] >>> {expr:#?}");
 
         let mut error: Option<ErrorKind> = None;
 
@@ -551,8 +551,16 @@ impl Parser {
         }
 
         if let Some(error) = error {
+            if DEBUG {
+                eprintln!("[check_expression] ERROR");
+            }
+
             Err(error)
         } else {
+            if DEBUG {
+                eprintln!("[check_expression] OK");
+            }
+            
             Ok(())
         }
     }
