@@ -223,6 +223,8 @@ impl Compiler {
             }};
         }
 
+        // convenience macro that automatically fills
+        // `line_pos`, `char_pos` and other fields
         macro_rules! token {
             ($kind:ident) => {
                 Token {
@@ -846,6 +848,7 @@ impl Compiler {
                                     let name = if let TokenKind::Identifier(ident) = token.kind {
                                         ident
                                     } else {
+                                        // this is parser's fault, so it's better to panic, i think
                                         panic!("depth marker not pointing to an Identifier (got {:?})", token.kind);
                                     };
 
