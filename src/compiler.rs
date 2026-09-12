@@ -1074,7 +1074,7 @@ impl Compiler {
                         Some(command!(CommandKind::End))
                     }
 
-                    "let" | "shadow" => {
+                    "let" | "set" | "shadow" => {
                         let operator = if let Some(op) = tokens.get(2) {
                             op.clone()
                         } else {
