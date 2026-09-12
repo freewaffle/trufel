@@ -1,4 +1,4 @@
-# The WF-180 virtual machine
+# The Waffari Trufel fantasy computer
 
 ## Checklist
 
