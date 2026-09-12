@@ -1269,5 +1269,8 @@ pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorK
         println!("--------------------------------\n");
     }
 
+    // let bytecode: Vec<..> = ..;
+
+    // Ok(bytecode)
     Ok(Vec::new())
 }
