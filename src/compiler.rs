@@ -1013,11 +1013,6 @@ impl Compiler {
                         while let Some(token) = next_token!() {
                             match &token.kind {
                                 TokenKind::ClosedParen => {
-                                    // this returns function name:
-                                    // if let Some(ident) = get_token_value!(pos + 1, Identifier) {
-                                    //     return_type = Some(ident.clone());
-                                    // }
-
                                     has_closed_paren = true;
                                     break;
                                 }
