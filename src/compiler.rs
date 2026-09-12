@@ -107,6 +107,11 @@ struct Command {
     pub line_pos: usize
 }
 
+/* #[derive(Debug)]
+enum Instruction {}
+
+type Bytecode = Vec<Instruction>; */
+
 #[repr(u8)]
 pub enum ErrorKind {
     UnrecognizedCharacter,
@@ -430,7 +435,9 @@ impl Compiler {
     }
 
     fn check_expression(&self, expr: &[Token], line_pos: usize) -> Result<(), ErrorKind> {
-        println!("[check_expression] >>> {expr:#?}");
+        if DEBUG {
+            println!("[check_expression] >>> {expr:#?}");
+        }
 
         let mut error: Option<ErrorKind> = None;
 
@@ -1219,6 +1226,10 @@ impl Compiler {
             Ok(commands)
         }
     }
+
+    /* pub fn generate_bytecode(&self, commands: Vec<Command>) -> Result<Bytecode, ErrorKind> {
+        Ok(Bytecode::new())
+    } */
 }
 
 pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorKind> {
