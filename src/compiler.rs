@@ -223,15 +223,12 @@ impl Compiler {
             }};
         }
 
-        // convenience macro that automatically fills
-        // `line_pos`, `char_pos` and other fields
+        // convenience macro that automatically fills `line_pos` field
         macro_rules! token {
             ($kind:ident) => {
                 Token {
                     line_pos,
-                    char_pos,
                     kind: TokenKind::$kind,
-                    line_str: get_line_str!()
                 }
             };
 
