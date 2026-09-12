@@ -687,6 +687,220 @@ impl Compiler {
         depth_stack
     }
 
+    fn collect_expr(&self, tokens: &[Token], line_pos: usize) -> Result<Vec<Token>, ErrorKind> {
+        let mut error: Option<ErrorKind> = None;
+
+        macro_rules! try_set_error {
+            ($kind:ident) => {
+                if error.is_none() {
+                    error = Some(ErrorKind::$kind);
+                }
+            };
+        }
+
+        macro_rules! print_error {
+            ($err_kind:ident, $msg:expr) => {{
+                eprintln!("[{}]: line {}:", self.filename, line_pos);
+                eprintln!("  error: {}", $msg);
+                try_set_error!($err_kind);
+            }};
+        }
+
+        let mut expr: Vec<Token> = Vec::new();
+                    
+        for token in tokens {
+            expr.push(token.clone());
+        }
+
+        if expr.is_empty() {
+            print_error!(EmptyExpression, "empty expression");
+        }
+        
+        /*
+            стек глубины `depth_stack` имеет одинаковый размер с `expr`
+            и показывает, в каких местах начинается IFC.
+
+            допустимые значения глубины:
+                0   : нет IFC
+                1.. : больше = глубже
+            
+            сначала обрабатываются самые глубокие IFC (максимально
+            достигнутая глубина берётся из `max_depth`).
+
+            пример:
+                FUNC( 1 + (3 * 3) + SOMETHING() )
+            D:  1   0 0 0 00 0 00 0 2           0
+        */
+        
+        let mut depth_stack: Vec<u8> = self.calculate_depths(&expr, line_pos);
+
+        let mut max_depth: u8 = 0;
+
+        for depth in depth_stack.iter() {
+            let depth = *depth;
+            if depth > max_depth {
+                max_depth = depth;
+            }
+        }
+
+        let has_ifcs = max_depth > 0;
+
+        if DEBUG && has_ifcs {
+            println!("[{line_pos}]:");
+
+            print!("  depth: ");
+            for depth in depth_stack.iter() {
+                print!("{:?}, ", depth);
+            }
+            println!();
+        }
+
+        assert_eq!(depth_stack.len(), expr.len(), "`depth_stack` and `expr` must have equal lengths");
+
+        if has_ifcs {
+            /*
+                holy memory pig. split in two parts:
+
+                A: read-only
+                B: mutable
+            */
+            
+            let mut expr_a: Vec<Token> = expr.clone();
+            let mut expr_b: Vec<Token> = Vec::new();
+
+            for target_depth in (1..=max_depth).rev() {
+                let mut peeker = depth_stack.iter().peekable();
+                let mut dpos: usize = 0;
+
+                macro_rules! next {
+                    () => {{
+                        let next = peeker.next();
+                        if next.is_some() {
+                            dpos += 1;
+                        }
+                        next
+                    }};
+                }
+
+                macro_rules! pos {
+                    () => {
+                        dpos.checked_sub(1).unwrap_or(0)
+                    }
+                }
+
+                macro_rules! get_token_at_dpos {
+                    () => {
+                        expr_a[pos!()].clone()
+                    }
+                }
+
+                while let Some(depth) = next!() {
+                    let token = get_token_at_dpos!();
+
+                    if *depth == target_depth {
+                        let name = if let TokenKind::Identifier(ident) = token.kind {
+                            ident
+                        } else {
+                            // this is parser's fault, so it's better to panic, i think
+                            panic!("depth marker not pointing to an Identifier (got {:?})", token.kind);
+                        };
+
+                        let mut args: Vec<Vec<Token>> = vec![
+                            Vec::new()
+                        ];
+
+                        /*
+                            increments on open paren,
+                            decrements on closed paren
+                        */
+                        let mut paren_counter: u8 = 0;
+
+                        // skip OpenParen
+                        next!();
+
+                        while next!().is_some() {
+                            let expr = args.last_mut().unwrap();
+                            let token = get_token_at_dpos!();
+
+                            use TokenKind::*;
+                            match token.kind {
+                                OpenParen => {
+                                    if let Some(sum) = paren_counter.checked_add(1)
+                                    && sum < MAX_EXPRESSION_DEPTH {
+                                        paren_counter = sum;
+                                    } else {
+                                        print_error!(ExpectedTokens, "too many nested parentheses");
+                                    }
+                                }
+
+                                ClosedParen => {
+                                    if let Some(diff) = paren_counter.checked_sub(1) {
+                                        paren_counter = diff;
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                Comma => {
+                                    args.push(Vec::new());
+                                    continue;
+                                }
+
+                                _ => {}
+                            }
+
+                            expr.push(token);
+                        }
+
+                        // this gives scary error:
+                        // let args = args.split(|tok| tok.kind == TokenKind::Comma).collect();
+
+                        for expr in args.iter() {
+                            self.check_expression(expr, line_pos)?;
+                        }
+
+                        let ifc = Token {
+                            kind: TokenKind::InlineFunctionCall {
+                                name, args
+                            },
+                            line_pos: token.line_pos
+                        };
+
+                        expr_b.push(ifc);
+                    } else {
+                        expr_b.push(token);
+                    }
+                }
+
+                expr_a = expr_b;
+                expr_b = Vec::new();
+
+                depth_stack = self.calculate_depths(&expr_a, line_pos);
+                assert_eq!(depth_stack.len(), expr_a.len(), "`depth_stack` and `expr_a` must have equal lengths");
+            }
+
+            expr = expr_a;
+        }
+
+        if DEBUG && has_ifcs {
+            println!("[{line_pos}]:");
+
+            print!("  expr: ");
+            for token in expr.iter() {
+                print!("{:#?}, ", token.kind);
+            }
+            println!();
+        }
+
+        self.check_expression(&expr, line_pos)?;
+
+        if let Some(err) = error {
+            Err(err)
+        } else {
+            Ok(expr)
+        }
+    }
+
     pub fn parse_tokens(&self, tokens: Vec<Vec<Token>>) -> Result<Vec<Command>, ErrorKind> {
         let mut commands: Vec<Command> = Vec::new();
         let mut error: Option<ErrorKind> = None;
@@ -753,201 +967,13 @@ impl Compiler {
 
             macro_rules! collect_expr {
                 ($tokens:expr) => {{
-                    let mut expr: Vec<Token> = Vec::new();
-                    
-                    for token in $tokens {
-                        expr.push(token.clone());
-                    }
-
-                    if expr.is_empty() {
-                        print_error!(EmptyExpression, "empty expression");
-                    }
-                    
-                    /*
-                        стек глубины `depth_stack` имеет одинаковый размер с `expr`
-                        и показывает, в каких местах начинается IFC.
-
-                        допустимые значения глубины:
-                            0   : нет IFC
-                            1.. : больше = глубже
-                        
-                        сначала обрабатываются самые глубокие IFC (максимально
-                        достигнутая глубина берётся из `max_depth`).
-
-                        пример:
-                            FUNC( 1 + (3 * 3) + SOMETHING() )
-                        D:  1   0 0 0 00 0 00 0 2           0
-                    */
-                    
-                    let mut depth_stack: Vec<u8> = self.calculate_depths(&expr, line_pos);
-
-                    let mut max_depth: u8 = 0;
-
-                    for depth in depth_stack.iter() {
-                        let depth = *depth;
-                        if depth > max_depth {
-                            max_depth = depth;
+                    match self.collect_expr($tokens, line_pos) {
+                        Ok(vec) => vec,
+                        Err(err) => {
+                            try_set_error!(err);
+                            break_line!();
                         }
                     }
-
-                    let has_ifcs = max_depth > 0;
-
-                    if DEBUG && has_ifcs {
-                        println!("[{line_pos}]:");
-
-                        print!("  depth: ");
-                        for depth in depth_stack.iter() {
-                            print!("{:?}, ", depth);
-                        }
-                        println!();
-                    }
-
-                    assert_eq!(depth_stack.len(), expr.len(), "`depth_stack` and `expr` must have equal lengths");
-
-                    if has_ifcs {
-                        /*
-                            holy memory pig. split in two parts:
-
-                            A: read-only
-                            B: mutable
-                        */
-                        
-                        let mut expr_a: Vec<Token> = expr.clone();
-                        let mut expr_b: Vec<Token> = Vec::new();
-
-                        for target_depth in (1..=max_depth).rev() {
-                            let mut peeker = depth_stack.iter().peekable();
-                            let mut dpos: usize = 0;
-
-                            macro_rules! next {
-                                () => {{
-                                    let next = peeker.next();
-                                    if next.is_some() {
-                                        dpos += 1;
-                                    }
-                                    next
-                                }};
-                            }
-
-                            macro_rules! pos {
-                                () => {
-                                    dpos.checked_sub(1).unwrap_or(0)
-                                }
-                            }
-
-                            macro_rules! get_token_at_dpos {
-                                () => {
-                                    expr_a[pos!()].clone()
-                                }
-                            }
-
-                            while let Some(depth) = next!() {
-                                let token = get_token_at_dpos!();
-
-                                if *depth == target_depth {
-                                    let name = if let TokenKind::Identifier(ident) = token.kind {
-                                        ident
-                                    } else {
-                                        // this is parser's fault, so it's better to panic, i think
-                                        panic!("depth marker not pointing to an Identifier (got {:?})", token.kind);
-                                    };
-
-                                    let mut args: Vec<Vec<Token>> = vec![
-                                        Vec::new()
-                                    ];
-
-                                    /*
-                                        increments on open paren,
-                                        decrements on closed paren
-                                    */
-                                    let mut paren_counter: u8 = 0;
-
-                                    // skip OpenParen
-                                    next!();
-
-                                    while next!().is_some() {
-                                        let expr = args.last_mut().unwrap();
-                                        let token = get_token_at_dpos!();
-
-                                        use TokenKind::*;
-                                        match token.kind {
-                                            OpenParen => {
-                                                if let Some(sum) = paren_counter.checked_add(1)
-                                                && sum < MAX_EXPRESSION_DEPTH {
-                                                    paren_counter = sum;
-                                                } else {
-                                                    print_error!(ExpectedTokens, "too many nested parentheses");
-                                                }
-                                            }
-
-                                            ClosedParen => {
-                                                if let Some(diff) = paren_counter.checked_sub(1) {
-                                                    paren_counter = diff;
-                                                } else {
-                                                    break;
-                                                }
-                                            }
-
-                                            Comma => {
-                                                args.push(Vec::new());
-                                                continue;
-                                            }
-
-                                            _ => {}
-                                        }
-
-                                        expr.push(token);
-                                    }
-
-                                    // this gives scary error:
-                                    // let args = args.split(|tok| tok.kind == TokenKind::Comma).collect();
-
-                                    for expr in args.iter() {
-                                        if let Err(err) = self.check_expression(expr, line_pos) {
-                                            try_set_error!(err);
-                                            break_line!();
-                                        }
-                                    }
-
-                                    let ifc = Token {
-                                        kind: TokenKind::InlineFunctionCall {
-                                            name, args
-                                        },
-                                        line_pos: token.line_pos
-                                    };
-
-                                    expr_b.push(ifc);
-                                } else {
-                                    expr_b.push(token);
-                                }
-                            }
-
-                            expr_a = expr_b;
-                            expr_b = Vec::new();
-
-                            depth_stack = self.calculate_depths(&expr_a, line_pos);
-                            assert_eq!(depth_stack.len(), expr_a.len(), "`depth_stack` and `expr_a` must have equal lengths");
-                        }
-
-                        expr = expr_a;
-                    }
-
-                    if DEBUG && has_ifcs {
-                        println!("[{line_pos}]:");
-
-                        print!("  expr: ");
-                        for token in expr.iter() {
-                            print!("{:#?}, ", token.kind);
-                        }
-                        println!();
-                    }
-
-                    if let Err(err) = self.check_expression(&expr, line_pos) {
-                        try_set_error!(err);
-                        break_line!();
-                    }
-
-                    expr
                 }};
             }
 
@@ -1184,7 +1210,7 @@ impl Compiler {
                                         print_error!(ExpectedTokens, "expected expression");
                                     }
 
-                                    let expr: Vec<Token> = collect_expr!(part);
+                                    let expr: Vec<Token> = collect_expr!(&part);
 
                                     args.push(expr);
                                 }
