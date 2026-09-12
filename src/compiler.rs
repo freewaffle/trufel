@@ -119,11 +119,11 @@ pub enum ErrorKind {
     EmptyExpression,
 }
 
-struct Parser {
+struct Compiler {
     pub filename: String
 }
 
-impl Parser {
+impl Compiler {
     #[inline]
     pub fn new(filename: String) -> Self {
         Self {
@@ -1222,7 +1222,7 @@ impl Parser {
 }
 
 pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorKind> {
-    let compiler = Parser::new(filename);
+    let compiler = Compiler::new(filename);
 
     let tokens = compiler.parse_file(file)?;
 
