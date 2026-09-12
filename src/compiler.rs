@@ -1042,7 +1042,7 @@ impl Compiler {
 
                                     args.push(arg);
 
-                                    if next_token!().is_some_and(|tok| tok.kind != TokenKind::OpenParen) {
+                                    if next_token!().is_some_and(|tok| tok.kind != TokenKind::Colon) {
                                         print_error!(ExpectedTokens, "expected colon ',' after argument");
                                     }
                                 }
