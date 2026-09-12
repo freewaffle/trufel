@@ -707,7 +707,7 @@ impl Compiler {
 
             let new_command: Option<Command>;
 
-            macro_rules! interrupt_line {
+            macro_rules! break_line {
                 () => {
                     continue 'tokens;
                 };
@@ -718,14 +718,8 @@ impl Compiler {
                     eprintln!("[{}]: line {}:", self.filename, line_pos);
                     eprintln!("  error: {}", $msg);
                     try_set_error!(ErrorKind::$err_kind);
-                    interrupt_line!();
+                    break_line!();
                 }};
-            }
-
-            macro_rules! is_token_of_type {
-                ($pos:expr, $kind:ident) => {
-                    (tokens.get($pos).is_some_and(|tok| tok.kind == TokenKind::$kind))
-                };
             }
 
             macro_rules! get_token_value {
@@ -740,42 +734,9 @@ impl Compiler {
                 };
             }
 
-            macro_rules! get_typed_identifier {
-                ($index:expr) => {
-                    match tokens.get($index) {
-                        Some(Token {
-                            kind: TokenKind::DoubleIdentifier(ident, ty),
-                            ..
-                        }) => Some(TypedIdentifier {
-                            ident: ident.clone(),
-                            ty: ty.clone()
-                        }),
-                        _ => None,
-                    }
-                };
-            }
-
             macro_rules! redundant_tokens_error {
                 () => {
                     print_error!(RedundantTokens, "redundant tokens");
-                };
-            }
-
-            macro_rules! check_redundant_tokens {
-                ($start:expr) => {{
-                    let len = tokens.len().checked_sub(1).unwrap_or(0);
-                    let diff = len.checked_sub($start);
-                    if diff.is_some_and(|diff| diff > 0) {
-                        redundant_tokens_error!();
-                    }
-                }};
-            }
-
-            macro_rules! assert_redundant_tokens {
-                ($cond:expr) => {
-                    if $cond {
-                        redundant_tokens_error!();
-                    }
                 };
             }
 
@@ -941,7 +902,7 @@ impl Compiler {
                                     for expr in args.iter() {
                                         if let Err(err) = self.check_expression(expr, line_pos) {
                                             try_set_error!(err);
-                                            interrupt_line!();
+                                            break_line!();
                                         }
                                     }
 
@@ -980,7 +941,7 @@ impl Compiler {
 
                     if let Err(err) = self.check_expression(&expr, line_pos) {
                         try_set_error!(err);
-                        interrupt_line!();
+                        break_line!();
                     }
 
                     expr
@@ -1008,7 +969,7 @@ impl Compiler {
 
                         let mut args: Vec<TypedIdentifier> = Vec::new();
                         
-                        if !is_token_of_type!(2, OpenParen) {
+                        if tokens.get(2).is_some_and(|tok|tok.kind != TokenKind::OpenParen) {
                             print_error!(ExpectedTokens, "expected open paren '('");
                         }
 
@@ -1063,13 +1024,26 @@ impl Compiler {
                             print_error!(ExpectedTokens, "expected return type");
                         };
 
-                        check_redundant_tokens!(redundant_pos - 1);
+                        // checking for redundant tokens
+                        {
+                            // decrementing length, because we check it with an index,
+                            // which starts from 0
+                            let len = tokens.len().saturating_sub(1);
+                            let pos = redundant_pos - 1;
+                            let diff = len.checked_sub(pos);
+                            if diff.is_some_and(|diff| diff > 0) {
+                                redundant_tokens_error!();
+                            }
+                        }
 
                         Some(command!(CommandKind::FunctionHeader { name, args, return_type }))
                     }
 
                     "end" => {
-                        assert_redundant_tokens!(tokens.len() > 1);
+                        // `end` doesn't have arguments at all
+                        if tokens.len() > 1 {
+                            redundant_tokens_error!();
+                        }
 
                         Some(command!(CommandKind::End))
                     }
@@ -1093,7 +1067,18 @@ impl Compiler {
                             "let" | "shadow" => {
                                 let shadowing = ident == "shadow";
 
-                                let name: TypedIdentifier = if let Some(name) = get_typed_identifier!(1) {
+                                let next_token = match tokens.get(1) {
+                                    Some(Token {
+                                        kind: TokenKind::DoubleIdentifier(ident, ty),
+                                        ..
+                                    }) => Some(TypedIdentifier {
+                                        ident: ident.clone(),
+                                        ty: ty.clone()
+                                    }),
+                                    _ => None,
+                                };
+
+                                let name: TypedIdentifier = if let Some(name) = next_token {
                                     name
                                 } else {
                                     print_error!(ExpectedTokens, "expected typed identifier `name:type`");
