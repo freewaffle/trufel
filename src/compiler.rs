@@ -457,7 +457,14 @@ impl Compiler {
         }
 
         if expr.is_empty() {
-            print_error!(EmptyExpression, "empty expression");
+            /*
+                we are checking expression emptyness outside of this function where
+                it's need to, so this error isn't required:
+
+                print_error!(EmptyExpression, "empty expression");
+            */
+            
+            return Ok(());
         }
 
         /*
