@@ -6,6 +6,14 @@ const MAX_EXPRESSION_DEPTH: u8 = 128;
 
 const DEBUG: bool = true;
 
+static POSSIBLE_OPS: [TokenKind; 5] = [
+    TokenKind::Equality,
+    TokenKind::Add,
+    TokenKind::Sub,
+    TokenKind::Mul,
+    TokenKind::Div
+];
+
 #[derive(PartialEq, Debug, Clone)]
 #[repr(u8)]
 enum TokenKind {
@@ -1062,15 +1070,7 @@ impl Compiler {
                                     print_error!(ExpectedTokens, "expected identifier");
                                 };
 
-                                let possible_ops = [
-                                    TokenKind::Equality,
-                                    TokenKind::Add,
-                                    TokenKind::Sub,
-                                    TokenKind::Mul,
-                                    TokenKind::Div
-                                ];
-
-                                let op: TokenKind = if possible_ops.contains(&operator.kind) {
+                                let op: TokenKind = if POSSIBLE_OPS.contains(&operator.kind) {
                                     operator.kind
                                 } else {
                                     print_error!(ExpectedTokens, "invalid operator");
