@@ -523,7 +523,14 @@ impl Compiler {
                     }
                 }
 
-                Add | Sub | Mul | Div | DoubleEquality | ClosedParen => {
+                ClosedParen => {
+                    // same as `assert_malformed!`, but without `invert!`
+                    if expecting_number {
+                        malformed!();
+                    }
+                }
+
+                Add | Sub | Mul | Div | DoubleEquality => {
                     assert_malformed!(!expecting_number);
                 }
 
@@ -692,33 +699,23 @@ impl Compiler {
     }
 
     fn collect_expr(&self, tokens: &[Token], line_pos: usize) -> Result<Vec<Token>, ErrorKind> {
-        let mut error: Option<ErrorKind> = None;
-
-        macro_rules! try_set_error {
-            ($kind:ident) => {
-                if error.is_none() {
-                    error = Some(ErrorKind::$kind);
-                }
-            };
-        }
-
         macro_rules! print_error {
             ($err_kind:ident, $msg:expr) => {{
                 eprintln!("[{}]: line {}:", self.filename, line_pos);
                 eprintln!("  error: {}", $msg);
-                try_set_error!($err_kind);
+                return Err(ErrorKind::$err_kind);
             }};
         }
-
-        let mut expr: Vec<Token> = Vec::new();
+        
+        let mut expr: Vec<Token> = tokens.to_vec();
                     
-        for token in tokens {
+        /* for token in tokens {
             expr.push(token.clone());
-        }
+        } */
 
-        if expr.is_empty() {
+        /* if expr.is_empty() {
             print_error!(EmptyExpression, "empty expression");
-        }
+        } */
         
         /*
             стек глубины `depth_stack` имеет одинаковый размер с `expr`
@@ -763,8 +760,6 @@ impl Compiler {
 
         if has_ifcs {
             /*
-                holy memory pig. split in two parts:
-
                 A: read-only
                 B: mutable
             */
@@ -856,10 +851,11 @@ impl Compiler {
                             expr.push(token);
                         }
 
-                        // this gives scary error:
-                        // let args = args.split(|tok| tok.kind == TokenKind::Comma).collect();
-
                         for expr in args.iter() {
+                            if expr.is_empty() {
+                                print_error!(EmptyExpression, "empty expression");
+                            }
+
                             self.check_expression(expr, line_pos)?;
                         }
 
@@ -898,11 +894,7 @@ impl Compiler {
 
         self.check_expression(&expr, line_pos)?;
 
-        if let Some(err) = error {
-            Err(err)
-        } else {
-            Ok(expr)
-        }
+        Ok(expr)
     }
 
     pub fn parse_tokens(&self, tokens: Vec<Vec<Token>>) -> Result<Vec<Command>, ErrorKind> {
