@@ -271,6 +271,7 @@ impl Compiler {
                         if ch == '.' {
                             if collecting_a {
                                 collecting_a = false;
+                                chars.next();
                                 continue;
                             } else {
                                 print_error!(RedundantDot, "redundant dot near number");
