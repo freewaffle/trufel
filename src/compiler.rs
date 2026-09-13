@@ -137,16 +137,6 @@ impl Compiler {
     }
 
     pub fn parse_line(&self, line_str: String, line_pos: usize) -> Result<Vec<Token>, ErrorKind> {
-        let mut error: Option<ErrorKind> = None;
-
-        macro_rules! try_set_error {
-            ($kind:ident) => {
-                if error.is_none() {
-                    error = Some(ErrorKind::$kind);
-                }
-            };
-        }
-
         let mut chars = line_str.chars().peekable();
         let mut line: Vec<Token> = Vec::new();
 
@@ -154,7 +144,7 @@ impl Compiler {
             ($err_kind:ident, $msg:expr) => {{
                 eprintln!("[{}]: line {}:", self.filename, line_pos);
                 eprintln!("  error: {}", $msg);
-                try_set_error!($err_kind);
+                return Err(ErrorKind::$err_kind);
             }};
         }
 
@@ -170,7 +160,6 @@ impl Compiler {
                     $var = result;
                 } else {
                     print_error!(IntegerOverflow, "integer overflow");
-                    break;
                 }
             };
         }
@@ -207,7 +196,6 @@ impl Compiler {
                             "too long identifier (max length is {} symbols)",
                             MAX_IDENTIFIER_LENGTH
                         ));
-                        break;
                     }
 
                     let is_char = is_identifier_token!(ch) || ch.is_ascii_digit();
@@ -275,7 +263,6 @@ impl Compiler {
                                 continue;
                             } else {
                                 print_error!(RedundantDot, "redundant dot near number");
-                                break;
                             }
                         } else {
                             break;
@@ -386,9 +373,7 @@ impl Compiler {
             }
 
             if let Some(tok) = new_token {
-                if error.is_none() {
-                    line.push(tok);
-                }
+                line.push(tok);
             } else {
                 print_error!(UnrecognizedCharacter, format!(
                     "unrecognized character: '{}'",
@@ -397,11 +382,7 @@ impl Compiler {
             }
         }
 
-        if let Some(error) = error {
-            Err(error)
-        } else {
-            Ok(line)
-        }
+        Ok(line)
     }
 
     pub fn parse_file(&self, file: File) -> Result<Vec<Vec<Token>>, ErrorKind> {
@@ -409,29 +390,19 @@ impl Compiler {
         let input_lines = reader.lines().map(|line| line.unwrap());
 
         let mut lines: Vec<Vec<Token>> = Vec::new();
-
-        let mut error: Option<ErrorKind> = None;
         
         for (current_line, input_line) in (1..).zip(input_lines) {
             match self.parse_line(input_line, current_line) {
                 Ok(line) => {
-                    if error.is_none() {
-                        lines.push(line);
-                    }
+                    lines.push(line);
                 }
                 Err(err) => {
-                    if error.is_none() {
-                        error = Some(err);
-                    }
+                    return Err(err);
                 }
             }
         }
 
-        if let Some(error) = error {
-            Err(error)
-        } else {
-            Ok(lines)
-        }
+        Ok(lines)
     }
 
     fn check_expression(&self, expr: &[Token], line_pos: usize) -> Result<(), ErrorKind> {
@@ -439,21 +410,16 @@ impl Compiler {
             println!("[check_expression] >>> {expr:#?}");
         }
 
-        let mut error: Option<ErrorKind> = None;
-
-        macro_rules! try_set_error {
-            ($kind:ident) => {
-                if error.is_none() {
-                    error = Some(ErrorKind::$kind);
-                }
-            };
-        }
-
         macro_rules! print_error {
             ($err_kind:ident, $msg:expr) => {{
                 eprintln!("[{}]: line {}:", self.filename, line_pos);
                 eprintln!("  error: {}", $msg);
-                try_set_error!($err_kind);
+
+                if DEBUG {
+                    eprintln!("[check_expression] ERROR");
+                }
+
+                return Err(ErrorKind::$err_kind);
             }};
         }
 
@@ -571,19 +537,11 @@ impl Compiler {
             malformed!();
         }
 
-        if let Some(error) = error {
-            if DEBUG {
-                eprintln!("[check_expression] ERROR");
-            }
-
-            Err(error)
-        } else {
-            if DEBUG {
-                eprintln!("[check_expression] OK");
-            }
-            
-            Ok(())
+        if DEBUG {
+            eprintln!("[check_expression] OK");
         }
+        
+        Ok(())
     }
 
     fn calculate_depths(&self, expr: &[Token], line_pos: usize) -> Vec<u8> {
@@ -900,15 +858,6 @@ impl Compiler {
 
     pub fn parse_tokens(&self, tokens: Vec<Vec<Token>>) -> Result<Vec<Command>, ErrorKind> {
         let mut commands: Vec<Command> = Vec::new();
-        let mut error: Option<ErrorKind> = None;
-
-        macro_rules! try_set_error {
-            ($kind:expr) => {
-                if error.is_none() {
-                    error = Some($kind);
-                }
-            };
-        }
         
         'tokens: for tokens in tokens {
             if tokens.is_empty() {
@@ -920,18 +869,11 @@ impl Compiler {
 
             let new_command: Option<Command>;
 
-            macro_rules! break_line {
-                () => {
-                    continue 'tokens;
-                };
-            }
-
             macro_rules! print_error {
                 ($err_kind:ident, $msg:expr) => {{
                     eprintln!("[{}]: line {}:", self.filename, line_pos);
                     eprintln!("  error: {}", $msg);
-                    try_set_error!(ErrorKind::$err_kind);
-                    break_line!();
+                    return Err(ErrorKind::$err_kind);
                 }};
             }
 
@@ -967,8 +909,7 @@ impl Compiler {
                     match self.collect_expr($tokens, line_pos) {
                         Ok(vec) => vec,
                         Err(err) => {
-                            try_set_error!(err);
-                            break_line!();
+                            return Err(err);
                         }
                     }
                 }};
@@ -1216,21 +1157,12 @@ impl Compiler {
                 print_error!(ExpectedTokens, "expected identifier");
             }
 
-            if error.is_none() {
-                if let Some(command) = new_command {
-                    commands.push(command);
-                }
-            } else if commands.is_empty() {
-                // free memory taken by commands (we won't return them anyway)
-                commands = Vec::new();
+            if let Some(command) = new_command {
+                commands.push(command);
             }
         }
 
-        if let Some(error) = error {
-            Err(error)
-        } else {
-            Ok(commands)
-        }
+        Ok(commands)
     }
 
     /* pub fn generate_bytecode(&self, commands: Vec<Command>) -> Result<Bytecode, ErrorKind> {
