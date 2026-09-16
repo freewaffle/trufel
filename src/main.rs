@@ -6,6 +6,7 @@ use std::io::{Read, Seek};
 
 mod magic;
 mod compiler;
+mod vm;
 
 use magic::*;
 
