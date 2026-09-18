@@ -1,14 +1,12 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-use crate::vm::Instruction;
-
 const MAX_IDENTIFIER_LENGTH: usize = 32;
 const MAX_EXPRESSION_DEPTH: u8 = 128;
 
 const DEBUG: bool = true;
 
-static POSSIBLE_OPS: [TokenKind; 5] = [
+const POSSIBLE_OPS: [TokenKind; 5] = [
     TokenKind::Equality,
     TokenKind::Add,
     TokenKind::Sub,
@@ -77,14 +75,14 @@ struct Token {
     pub kind: TokenKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TypedIdentifier {
     pub ident: String,
     pub ty: String
 }
 
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum CommandKind {
     FunctionHeader {
         name: String,
@@ -112,12 +110,56 @@ enum CommandKind {
     },
 }
 
+#[derive(Clone)]
 struct Command {
     pub kind: CommandKind,
     pub line_pos: usize
 }
 
+#[derive(Debug)]
+#[repr(u8)]
+enum InstructionKind {
+    Nop,
+    Mov { r0: u8, c0: u16 },
+    Add { r0: u8, r1: u8, r2: u8 },
+    Sub { r0: u8, r1: u8, r2: u8 },
+    Mul { r0: u8, r1: u8, r2: u8 },
+    Div { r0: u8, r1: u8, r2: u8 },
+    Mod { r0: u8, r1: u8, r2: u8 },
+    And { r0: u8, r1: u8, r2: u8 },
+    Or  { r0: u8, r1: u8, r2: u8 },
+    Xor { r0: u8, r1: u8, r2: u8 },
+    Not { r0: u8, r1: u8 },
+    Shl { r0: u8, r1: u8, r2: u8 },
+    Shr { r0: u8, r1: u8, r2: u8 },
+    Eq  { r0: u8, r1: u8, r2: u8 },
+    Neq { r0: u8, r1: u8, r2: u8 },
+    Lt  { r0: u8, r1: u8, r2: u8 },
+    Lte { r0: u8, r1: u8, r2: u8 },
+    Gt  { r0: u8, r1: u8, r2: u8 },
+    Gte { r0: u8, r1: u8, r2: u8 },
+    Jmp { pos: u16 },
+    Cmp,
+    Call { pos: u16 },
+    Ret,
+    Store { r0: u8, r1: u8 },
+    Fetch { r0: u8, r1: u8 },
+    Int,
+    Halt,
+}
+
+struct Instruction {
+    pub kind: InstructionKind,
+}
+
 type Bytecode = Vec<Instruction>;
+
+struct FunctionPrototype {
+    pub name: String,
+    pub args: Vec<TypedIdentifier>,
+    pub body: Vec<Command>,
+    pub return_type: String
+}
 
 #[repr(u8)]
 pub enum ErrorKind {
@@ -129,6 +171,9 @@ pub enum ErrorKind {
     ExpectedTokens,
     RedundantTokens,
     EmptyExpression,
+    DuplicateName,
+    NestedFunctionDefinition,
+    UnclosedFunction
 }
 
 struct Compiler {
@@ -1165,6 +1210,59 @@ impl Compiler {
     }
 
     pub fn generate_bytecode(&self, commands: Vec<Command>) -> Result<Bytecode, ErrorKind> {
+        macro_rules! print_error {
+            ($line_pos:expr, $err_kind:ident, $msg:expr) => {{
+                eprintln!("[{}]: line {}:", self.filename, $line_pos);
+                eprintln!("  error: {}", $msg);
+                return Err(ErrorKind::$err_kind);
+            }};
+        }
+
+        let mut functions: Vec<FunctionPrototype> = Vec::new();
+        let mut boot: Vec<Command> = Vec::new();
+
+        {
+            let mut cmds_iter = commands.into_iter();
+
+            while let Some(cmd) = cmds_iter.next() {
+                if let CommandKind::FunctionHeader { name, args, return_type } = cmd.kind {
+                    for proto in functions.iter() {
+                        if proto.name == name {
+                            print_error!(cmd.line_pos, DuplicateName, format!("duplicate function name `{name}`"));
+                        }
+                    }
+
+                    let mut body: Vec<Command> = Vec::new();
+                    let mut closed = false;
+
+                    for cmd in cmds_iter.by_ref() {
+                        use CommandKind::*;
+                        match cmd.kind {
+                            FunctionHeader { .. } => {
+                                print_error!(cmd.line_pos, NestedFunctionDefinition, "function can't be nested into another");
+                            }
+                            End => {
+                                closed = true;
+                                break;
+                            }
+                            _ => {
+                                body.push(cmd);
+                            }
+                        }
+                    }
+
+                    if !closed {
+                        print_error!(cmd.line_pos, UnclosedFunction, format!("unclosed function `{name}`"));
+                    }
+
+                    let proto = FunctionPrototype { name, args, body, return_type };
+                    functions.push(proto);
+                } else {
+                    boot.push(cmd);
+                }
+            }
+        }
+
         Ok(Bytecode::new())
     }
 }
@@ -1206,7 +1304,17 @@ pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorK
         println!("--------------------------------\n");
     }
 
-    // let bytecode: Vec<..> = ..;
+    let bytecode: Bytecode = compiler.generate_bytecode(commands)?;
+
+    if DEBUG {
+        println!("--------- INSTRUCTIONS ---------");
+
+        for (index, instr) in bytecode.iter().enumerate() {
+            println!("[{}] {:#?}", index, instr.kind);
+        }
+
+        println!("--------------------------------\n");
+    }
 
     // Ok(bytecode)
     Ok(Vec::new())
