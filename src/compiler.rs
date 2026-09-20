@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-use crate::vm::MAX_REGISTERS_COUNT;
+use crate::vm;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
 const MAX_EXPRESSION_DEPTH: u8 = 128;
@@ -139,7 +139,10 @@ struct Command {
 #[repr(u8)]
 enum InstructionKind {
     Nop,
-    Mov { r0: u8, c0: u16 },
+
+    MovR { r0: u8, r1: u8 },
+    // Mov[?]
+
     Add { r0: u8, r1: u8, r2: u8 },
     Sub { r0: u8, r1: u8, r2: u8 },
     Mul { r0: u8, r1: u8, r2: u8 },
@@ -157,13 +160,16 @@ enum InstructionKind {
     Lte { r0: u8, r1: u8, r2: u8 },
     Gt  { r0: u8, r1: u8, r2: u8 },
     Gte { r0: u8, r1: u8, r2: u8 },
-    Jmp { pos: u16 },
+    
     Cmp,
+    Jmp { pos: u16 },
     Call { pos: u16 },
-    Ret,
+
     Store { port: u8, reg: u8 },
     Fetch { port: u8, reg: u8 },
+    
     Int,
+    Ret,
     Halt,
 }
 
@@ -1261,7 +1267,7 @@ impl Compiler {
         let mut functions: Vec<FunctionPrototype> = Vec::new();
         let mut boot: Vec<Command> = Vec::new();
 
-        let mut registers: [Register; MAX_REGISTERS_COUNT] = [const { Register::Free }; MAX_REGISTERS_COUNT];
+        let mut registers: [Register; vm::MAX_REGISTERS_COUNT] = [const { Register::Free }; vm::MAX_REGISTERS_COUNT];
 
         let mut instrs: Vec<Instruction> = Vec::new();
 
