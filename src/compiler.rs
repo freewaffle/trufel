@@ -1,6 +1,8 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
+use crate::vm::MAX_REGISTERS_COUNT;
+
 const MAX_IDENTIFIER_LENGTH: usize = 32;
 const MAX_EXPRESSION_DEPTH: u8 = 128;
 
@@ -75,10 +77,27 @@ struct Token {
     pub kind: TokenKind,
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone)]
+enum VariableType {
+    Number
+}
+
+impl VariableType {
+    #[inline]
+    pub fn from_string(string: String) -> Option<Self> {
+        use VariableType::*;
+        match string.as_str() {
+            "number" => Some(Number),
+            _ => None
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct TypedIdentifier {
     pub ident: String,
-    pub ty: String
+    pub ty: VariableType
 }
 
 #[repr(u8)]
@@ -142,8 +161,8 @@ enum InstructionKind {
     Cmp,
     Call { pos: u16 },
     Ret,
-    Store { r0: u8, r1: u8 },
-    Fetch { r0: u8, r1: u8 },
+    Store { port: u8, reg: u8 },
+    Fetch { port: u8, reg: u8 },
     Int,
     Halt,
 }
@@ -152,13 +171,22 @@ struct Instruction {
     pub kind: InstructionKind,
 }
 
-type Bytecode = Vec<Instruction>;
+type Bytecode = Vec<u8>;
 
 struct FunctionPrototype {
     pub name: String,
     pub args: Vec<TypedIdentifier>,
     pub body: Vec<Command>,
     pub return_type: String
+}
+
+#[repr(u8)]
+enum Register {
+    Free,
+    Variable {
+        name: String,
+        ty: VariableType,
+    },
 }
 
 #[repr(u8)]
@@ -173,7 +201,9 @@ pub enum ErrorKind {
     EmptyExpression,
     DuplicateName,
     NestedFunctionDefinition,
-    UnclosedFunction
+    UnclosedFunction,
+    UnknownType,
+    FreeRegisterNotFound
 }
 
 struct Compiler {
@@ -967,6 +997,16 @@ impl Compiler {
                 }};
             }
 
+            macro_rules! try_type_from_string {
+                ($str:expr) => {
+                    if let Some(ty) = VariableType::from_string($str) {
+                        ty
+                    } else {
+                        print_error!(UnknownType, format!("unknown type `{}`", $str));
+                    }
+                };
+            }
+
             if let TokenKind::Identifier(ident) = &first_token.kind {
                 // as_str() shouldn't clone string, looks like it just
                 // does nothing but changes the type.
@@ -1012,7 +1052,7 @@ impl Compiler {
                                 TokenKind::DoubleIdentifier(ident, ty) => {
                                     let arg = TypedIdentifier {
                                         ident: ident.clone(),
-                                        ty: ty.clone()
+                                        ty: try_type_from_string!(ty.clone())
                                     };
 
                                     args.push(arg);
@@ -1087,7 +1127,7 @@ impl Compiler {
                                         ..
                                     }) => Some(TypedIdentifier {
                                         ident: ident.clone(),
-                                        ty: ty.clone()
+                                        ty: try_type_from_string!(ty.clone())
                                     }),
                                     _ => None,
                                 };
@@ -1209,7 +1249,7 @@ impl Compiler {
         Ok(commands)
     }
 
-    pub fn generate_bytecode(&self, commands: Vec<Command>) -> Result<Bytecode, ErrorKind> {
+    pub fn generate_instructions(&self, commands: Vec<Command>) -> Result<Vec<Instruction>, ErrorKind> {
         macro_rules! print_error {
             ($line_pos:expr, $err_kind:ident, $msg:expr) => {{
                 eprintln!("[{}]: line {}:", self.filename, $line_pos);
@@ -1220,6 +1260,25 @@ impl Compiler {
 
         let mut functions: Vec<FunctionPrototype> = Vec::new();
         let mut boot: Vec<Command> = Vec::new();
+
+        let mut registers: [Register; MAX_REGISTERS_COUNT] = [const { Register::Free }; MAX_REGISTERS_COUNT];
+
+        let mut instrs: Vec<Instruction> = Vec::new();
+
+        macro_rules! find_free_register {
+            () => {{
+                let mut free_register: Option<usize> = None;
+
+                for (index, reg) in registers.iter().enumerate() {
+                    if let Register::Free = reg {
+                        free_register = Some(index);
+                        break;
+                    }
+                }
+
+                free_register
+            }};
+        }
 
         {
             let mut cmds_iter = commands.into_iter();
@@ -1263,7 +1322,34 @@ impl Compiler {
             }
         }
 
-        Ok(Bytecode::new())
+        for command in boot {
+            let line_pos = command.line_pos;
+
+            use CommandKind::*;
+            match command.kind {
+                FunctionHeader { .. } => {
+                    panic!("FunctionHeader inside a function/boot");
+                }
+                VariableDecl { shadowing, name, op, expr } => {
+                    if shadowing {
+                        todo!();
+                    } else {
+                        let free_register: usize = if let Some(index) = find_free_register!() {
+                            index
+                        } else {
+                            print_error!(line_pos, FreeRegisterNotFound, format!(
+                                "unable to find free VM register for variable `{}`", name.ident
+                            ));
+                        };
+                    }
+                }
+                _ => {
+                    todo!();
+                }
+            }
+        }
+
+        Ok(Vec::new())
     }
 }
 
@@ -1304,7 +1390,7 @@ pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorK
         println!("--------------------------------\n");
     }
 
-    let bytecode: Bytecode = compiler.generate_bytecode(commands)?;
+    let bytecode: Vec<Instruction> = compiler.generate_instructions(commands)?;
 
     if DEBUG {
         println!("--------- INSTRUCTIONS ---------");
