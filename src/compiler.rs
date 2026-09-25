@@ -140,33 +140,50 @@ struct Command {
 enum InstructionKind {
     Nop,
 
-    MovR { r0: u8, r1: u8 },
-    // Mov[?]
+    /// `r(r0) = r(r1)`
+    Mov { r0: u8, r1: u8 },
+    /// `r(reg) = const(cn)`
+    MovC { reg: u8, cn: u16 },
+    /// `r(reg) = void`
+    MovV { reg: u8 },
 
+    /// `r(r0) = r(r1) + r(r2)`
     Add { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = r(r1) - r(r2)`
     Sub { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = r(r1) * r(r2)`
     Mul { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = r(r1) / r(r2)`
     Div { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = r(r1) % r(r2)`
     Mod { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = r(r1) && r(r2)`
     And { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = r(r1) || r(r2)`
     Or  { r0: u8, r1: u8, r2: u8 },
-    Xor { r0: u8, r1: u8, r2: u8 },
+    // Xor { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = !r(r1)`
     Not { r0: u8, r1: u8 },
+    /// `r(r0) = r(r1) << r(r2)`
     Shl { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = r(r1) >> r(r2)`
     Shr { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = r(r1) == r(r2)`
     Eq  { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = r(r1) != r(r2)`
     Neq { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = r(r1) < r(r2)`
     Lt  { r0: u8, r1: u8, r2: u8 },
+    /// `r(r0) = r(r1) <= r(r2)`
     Lte { r0: u8, r1: u8, r2: u8 },
-    Gt  { r0: u8, r1: u8, r2: u8 },
-    Gte { r0: u8, r1: u8, r2: u8 },
     
-    Cmp,
-    Jmp { pos: u16 },
+    Test { reg: u8 },
+    Jmp  { pos: u16 },
     Call { pos: u16 },
 
-    Store { port: u8, reg: u8 },
-    Fetch { port: u8, reg: u8 },
+    NewSpr { r: u8, xsize: u8, ysize: u8 },
+    /// `s(spr)[r(pos)] = r(value)`
+    SetSpr { spr: u8, pos: u8, value: u8},
     
     Int,
     Ret,
@@ -176,8 +193,6 @@ enum InstructionKind {
 struct Instruction {
     pub kind: InstructionKind,
 }
-
-type Bytecode = Vec<u8>;
 
 struct FunctionPrototype {
     pub name: String,
