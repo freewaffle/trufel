@@ -33,9 +33,22 @@ enum TokenKind {
     Sub,
     Mul,
     Div,
-
+    Mod,
+    
+    /// `=`
     Equality,
-    DoubleEquality,
+    /// `==`
+    Equal,
+    NotEqual,
+
+    LessThan,
+    LessThanOrEqual,
+    MoreThan,
+    MoreThanOrEqual,
+    
+    LogicalNot,
+    LogicalAnd,
+    LogicalOr,
 
     Comma,
     Colon,
@@ -80,7 +93,10 @@ struct Token {
 #[repr(u8)]
 #[derive(Debug, Clone)]
 enum VariableType {
-    Number
+    Number,
+    Address,
+    Bool,
+    Void
 }
 
 impl VariableType {
@@ -89,6 +105,9 @@ impl VariableType {
         use VariableType::*;
         match string.as_str() {
             "number" => Some(Number),
+            "addr" => Some(Address),
+            "bool" => Some(Bool),
+            "void" => Some(Void),
             _ => None
         }
     }
@@ -99,6 +118,8 @@ struct TypedIdentifier {
     pub ident: String,
     pub ty: VariableType
 }
+
+type Expression = Vec<Token>;
 
 #[repr(u8)]
 #[derive(Debug, Clone)]
@@ -113,19 +134,19 @@ enum CommandKind {
         args: Vec<Vec<Token>>
     },
     Return {
-        expr: Vec<Token>
+        expr: Expression
     },
     End,
     VariableDecl {
         shadowing: bool,
-        name: TypedIdentifier,
+        ident: TypedIdentifier,
         op: TokenKind,
-        expr: Vec<Token>
+        expr: Expression
     },
     VariableUpdate {
         name: String,
         op: TokenKind,
-        expr: Vec<Token>
+        expr: Expression
     },
 }
 
@@ -185,7 +206,6 @@ enum InstructionKind {
     /// `s(spr)[r(pos)] = r(value)`
     SetSpr { spr: u8, pos: u8, value: u8},
     
-    Int,
     Ret,
     Halt,
 }
@@ -213,7 +233,7 @@ enum Register {
 #[repr(u8)]
 pub enum ErrorKind {
     UnrecognizedCharacter,
-    IntegerOverflow,
+    NumberOverflow,
     TooLongIdentifier,
     RedundantDot,
     UnclosedString,
@@ -224,7 +244,9 @@ pub enum ErrorKind {
     NestedFunctionDefinition,
     UnclosedFunction,
     UnknownType,
-    FreeRegisterNotFound
+    FreeRegisterNotFound,
+    TooHighPriority,
+    UnexpectedOperator
 }
 
 struct Compiler {
@@ -262,7 +284,7 @@ impl Compiler {
                 if let Some(result) = $var.$func($func_expr) {
                     $var = result;
                 } else {
-                    print_error!(IntegerOverflow, "integer overflow");
+                    print_error!(NumberOverflow, "number overflow");
                 }
             };
         }
@@ -346,7 +368,13 @@ impl Compiler {
 
             if identifier {
                 let ident: String = collect_identifier!(ch);
-                let token = token!(Identifier, ident);
+
+                let token = match ident.as_str() {
+                    "and" => token!(LogicalAnd),
+                    "or" => token!(LogicalOr),
+                    _ => token!(Identifier, ident),
+                };
+
                 new_token = Some(token);
             }
 
@@ -424,15 +452,43 @@ impl Compiler {
                     '-' => Some(TokenKind::Sub),
                     '*' => Some(TokenKind::Mul),
                     '/' => Some(TokenKind::Div),
+                    '%' => Some(TokenKind::Mod),
+
+                    '!' => {
+                        if chars.peek().is_some_and(|ch| *ch == '=') {
+                            next_char!();
+                            Some(TokenKind::NotEqual)
+                        } else {
+                            Some(TokenKind::LogicalNot)
+                        }
+                    },
 
                     '=' => {
                         if chars.peek().is_some_and(|ch| *ch == '=') {
                             next_char!();
-                            Some(TokenKind::DoubleEquality)
+                            Some(TokenKind::Equal)
                         } else {
                             Some(TokenKind::Equality)
                         }
                     }
+
+                    '<' => {
+                        if chars.peek().is_some_and(|ch| *ch == '=') {
+                            next_char!();
+                            Some(TokenKind::LessThanOrEqual)
+                        } else {
+                            Some(TokenKind::LessThan)
+                        }
+                    },
+
+                    '>' => {
+                        if chars.peek().is_some_and(|ch| *ch == '=') {
+                            next_char!();
+                            Some(TokenKind::MoreThanOrEqual)
+                        } else {
+                            Some(TokenKind::MoreThan)
+                        }
+                    },
 
                     ',' => Some(TokenKind::Comma),
 
@@ -586,7 +642,7 @@ impl Compiler {
                     assert_malformed!(expecting_number);
                 }
 
-                OpenParen => {
+                OpenParen | LogicalNot => {
                     // same as `assert_malformed!`, but without `invert!`
                     if !expecting_number {
                         malformed!();
@@ -600,7 +656,10 @@ impl Compiler {
                     }
                 }
 
-                Add | Sub | Mul | Div | DoubleEquality => {
+                Add | Sub | Mul | Div | Equal | NotEqual |
+                LessThan | LessThanOrEqual |
+                MoreThan | MoreThanOrEqual |
+                LogicalAnd | LogicalOr => {
                     assert_malformed!(!expecting_number);
                 }
 
@@ -647,120 +706,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn calculate_depths(&self, expr: &[Token], line_pos: usize) -> Vec<u8> {
-        let mut error: Option<ErrorKind> = None;
-
-        macro_rules! try_set_error {
-            ($kind:ident) => {
-                if error.is_none() {
-                    error = Some(ErrorKind::$kind);
-                }
-            };
-        }
-
-        macro_rules! print_error {
-            ($err_kind:ident, $msg:expr) => {{
-                eprintln!("[{}]: line {}:", self.filename, line_pos);
-                eprintln!("  error: {}", $msg);
-                try_set_error!($err_kind);
-            }};
-        }
-
-        if expr.is_empty() {
-            print_error!(EmptyExpression, "empty expression");
-        }
-        
-        let mut depth_stack: Vec<u8> = Vec::new();
-
-        let mut peeker = expr.iter().peekable();
-
-        let mut last_depth: u8 = 0;
-        let mut paren_stack: Vec<u8> = Vec::new();
-
-        macro_rules! get_last_paren_counter {
-            () => {
-                paren_stack.last_mut().expect("paren counter must exist")
-            };
-        }
-        
-        /*
-            `paren_stack` помогает определять, где конкретно заканчивается IFC.
-            после каждого `I(` создаётся новый счетчик через `push`, и самый
-            последний счётчик считается активным.
-
-            пример:
-                FUNC( 1 + (3 * 3) )
-            PC: ____0_____1_____0_X
-        */
-
-        while let Some(token) = peeker.next() {
-            let parsing_ifc = !paren_stack.is_empty();
-
-            macro_rules! push_ifc {
-                () => {
-                    last_depth += 1;
-                    depth_stack.push(last_depth);
-
-                    paren_stack.push(0);
-
-                    // skip OpenParen
-                    peeker.next();
-                    depth_stack.push(0);
-
-                    continue;
-                };
-            }
-
-            macro_rules! pop_ifc {
-                () => {
-                    last_depth -= 1;
-                    depth_stack.push(last_depth);
-
-                    paren_stack.pop();
-
-                    continue;
-                };
-            }
-            
-            use TokenKind::*;
-            match &token.kind {
-                OpenParen if parsing_ifc => {
-                    let paren_counter = get_last_paren_counter!();
-
-                    if let Some(sum) = paren_counter.checked_add(1)
-                    && sum < MAX_EXPRESSION_DEPTH {
-                        *paren_counter = sum;
-                    } else {
-                        print_error!(ExpectedTokens, "too many nested parentheses");
-                    }
-                }
-
-                ClosedParen if parsing_ifc => {
-                    let paren_counter = get_last_paren_counter!();
-
-                    if let Some(diff) = paren_counter.checked_sub(1) {
-                        *paren_counter = diff;
-                    } else {
-                        pop_ifc!();
-                    }
-                }
-
-                Identifier(..)
-                    if peeker.peek().is_some_and(|tok| tok.kind == OpenParen) => {
-                        push_ifc!();
-                    }
-
-                _ => {}
-            }
-
-            // default depth (no IFC)
-            depth_stack.push(0);
-        }
-
-        depth_stack
-    }
-
-    fn collect_expr(&self, tokens: &[Token], line_pos: usize) -> Result<Vec<Token>, ErrorKind> {
+    fn collect_expression(&self, tokens: &[Token], line_pos: usize) -> Result<Vec<Token>, ErrorKind> {
         macro_rules! print_error {
             ($err_kind:ident, $msg:expr) => {{
                 eprintln!("[{}]: line {}:", self.filename, line_pos);
@@ -959,6 +905,257 @@ impl Compiler {
         Ok(expr)
     }
 
+    fn optimize_expression(&self, expr: Expression, line_pos: usize) -> Result<Expression, ErrorKind> {
+        macro_rules! print_error {
+            ($err_kind:ident, $msg:expr) => {{
+                eprintln!("[{}]: line {}:", self.filename, line_pos);
+                eprintln!("  error: {}", $msg);
+                return Err(ErrorKind::$err_kind);
+            }};
+        }
+
+        /*
+            A: read-only
+            B: mutable
+        */
+            
+        let mut expr_a: Expression;
+        let mut expr_b: Expression = expr.clone();
+
+        /*
+            expr_a = expr_b;
+            expr_b = Vec::new();
+        */
+
+        let mut priorities: Vec<u8> = Vec::with_capacity(expr.capacity());
+        let mut max_priority: u8;
+
+        let mut paren_counter: u8 = 0;
+
+        'optiloop: loop {
+            expr_a = expr_b;
+            expr_b = expr_a.clone();
+
+            max_priority = 0;
+
+            for token in expr.iter() {
+                use TokenKind::*;
+
+                let priority: u8 = match token.kind {
+                    OpenParen => {
+                        if let Some(sum) = paren_counter.checked_add(1)
+                        && sum < MAX_EXPRESSION_DEPTH {
+                            paren_counter = sum;
+                        } else {
+                            print_error!(ExpectedTokens, "too many nested parentheses");
+                        }
+
+                        0
+                    }
+
+                    ClosedParen => {
+                        if let Some(diff) = paren_counter.checked_sub(1) {
+                            paren_counter = diff;
+                        } else {
+                            print_error!(ExpectedTokens, "unmatched closed parenthesis");
+                        }
+
+                        0
+                    }
+
+                    Mod | Div | Mul | LogicalNot => 5,
+
+                    Add | Sub => 4,
+
+                    Equal | NotEqual |
+                    LessThan | LessThanOrEqual |
+                    MoreThan | MoreThanOrEqual => 3,
+
+                    // <- byte ops
+
+                    LogicalOr | LogicalAnd => 1,
+
+                    _ => 0
+                };
+
+                let priority = if let Some(sum) = priority.checked_add(paren_counter) {
+                    sum
+                } else {
+                    print_error!(TooHighPriority, "reached operator priority limit");
+                };
+
+                if max_priority < priority {
+                    max_priority = priority;
+                }
+
+                priorities.push(priority);
+            }
+
+            if max_priority == 0 {
+                break;
+            }
+
+            assert_eq!(expr_a.len(), priorities.len());
+
+            for (ppos, target_priority) in (1..=max_priority).rev().enumerate() {
+                let priority = priorities[ppos];
+
+                if priority == target_priority {
+                    /*
+                        индекс `ppos +/- 1` должен быть безопасным, потому что отсутствие числа
+                        после оператора или появление оператора первым токеном всегда
+                        проверяется функцией `check_expression`, которая, в свою очередь,
+                        всегда вызывается функцией `collect_expression`.
+                    */
+
+                    macro_rules! left {
+                        () => {
+                            if let TokenKind::Number(left) = expr_a[ppos - 1].kind {
+                                left
+                            } else {
+                                continue;
+                            }
+                        };
+                    }
+
+                    let right = if let TokenKind::Number(right) = expr_a[ppos + 1].kind {
+                        right
+                    } else {
+                        continue;
+                    };
+
+                    use TokenKind::*;
+                    let value: f32 = match expr_a[ppos].kind {
+                        Add => left!() + right,
+                        Sub => left!() - right,
+                        // ...
+                    };
+
+                    if !value.is_finite() {
+                        print_error!(NumberOverflow, "number overflow");
+                    }
+
+                    continue 'optiloop;
+                }
+            }
+        }
+
+        Ok(expr_a)
+    }
+
+    fn calculate_depths(&self, expr: &[Token], line_pos: usize) -> Vec<u8> {
+        let mut error: Option<ErrorKind> = None;
+
+        macro_rules! try_set_error {
+            ($kind:ident) => {
+                if error.is_none() {
+                    error = Some(ErrorKind::$kind);
+                }
+            };
+        }
+
+        macro_rules! print_error {
+            ($err_kind:ident, $msg:expr) => {{
+                eprintln!("[{}]: line {}:", self.filename, line_pos);
+                eprintln!("  error: {}", $msg);
+                try_set_error!($err_kind);
+            }};
+        }
+
+        if expr.is_empty() {
+            print_error!(EmptyExpression, "empty expression");
+        }
+        
+        let mut depth_stack: Vec<u8> = Vec::new();
+
+        let mut peeker = expr.iter().peekable();
+
+        let mut last_depth: u8 = 0;
+        let mut paren_stack: Vec<u8> = Vec::new();
+
+        macro_rules! get_last_paren_counter {
+            () => {
+                paren_stack.last_mut().expect("paren counter must exist")
+            };
+        }
+        
+        /*
+            `paren_stack` помогает определять, где конкретно заканчивается IFC.
+            после каждого `I(` создаётся новый счетчик через `push`, и самый
+            последний счётчик считается активным.
+
+            пример:
+                FUNC( 1 + (3 * 3) )
+            PC: ____0_____1_____0_X
+        */
+
+        while let Some(token) = peeker.next() {
+            let parsing_ifc = !paren_stack.is_empty();
+
+            macro_rules! push_ifc {
+                () => {
+                    last_depth += 1;
+                    depth_stack.push(last_depth);
+
+                    paren_stack.push(0);
+
+                    // skip OpenParen
+                    peeker.next();
+                    depth_stack.push(0);
+
+                    continue;
+                };
+            }
+
+            macro_rules! pop_ifc {
+                () => {
+                    last_depth -= 1;
+                    depth_stack.push(last_depth);
+
+                    paren_stack.pop();
+
+                    continue;
+                };
+            }
+            
+            use TokenKind::*;
+            match &token.kind {
+                OpenParen if parsing_ifc => {
+                    let paren_counter = get_last_paren_counter!();
+
+                    if let Some(sum) = paren_counter.checked_add(1)
+                    && sum < MAX_EXPRESSION_DEPTH {
+                        *paren_counter = sum;
+                    } else {
+                        print_error!(ExpectedTokens, "too many nested parentheses");
+                    }
+                }
+
+                ClosedParen if parsing_ifc => {
+                    let paren_counter = get_last_paren_counter!();
+
+                    if let Some(diff) = paren_counter.checked_sub(1) {
+                        *paren_counter = diff;
+                    } else {
+                        pop_ifc!();
+                    }
+                }
+
+                Identifier(..)
+                    if peeker.peek().is_some_and(|tok| tok.kind == OpenParen) => {
+                        push_ifc!();
+                    }
+
+                _ => {}
+            }
+
+            // default depth (no IFC)
+            depth_stack.push(0);
+        }
+
+        depth_stack
+    }
+
     pub fn parse_tokens(&self, tokens: Vec<Vec<Token>>) -> Result<Vec<Command>, ErrorKind> {
         let mut commands: Vec<Command> = Vec::new();
         
@@ -1009,7 +1206,7 @@ impl Compiler {
 
             macro_rules! collect_expr {
                 ($tokens:expr) => {{
-                    match self.collect_expr($tokens, line_pos) {
+                    match self.collect_expression($tokens, line_pos) {
                         Ok(vec) => vec,
                         Err(err) => {
                             return Err(err);
@@ -1153,10 +1350,10 @@ impl Compiler {
                                     _ => None,
                                 };
 
-                                let name: TypedIdentifier = if let Some(name) = next_token {
-                                    name
+                                let ident: TypedIdentifier = if let Some(ident) = next_token {
+                                    ident
                                 } else {
-                                    print_error!(ExpectedTokens, "expected typed identifier `name:type`");
+                                    print_error!(ExpectedTokens, "expected typed identifier `ident:type`");
                                 };
 
                                 let op: TokenKind = if operator.kind == TokenKind::Equality {
@@ -1165,7 +1362,7 @@ impl Compiler {
                                     print_error!(ExpectedTokens, "expected equality symbol '=' operator");
                                 };
 
-                                command!(CommandKind::VariableDecl { shadowing, name, op, expr })
+                                command!(CommandKind::VariableDecl { shadowing, ident, op, expr })
                             }
 
                             "set" => {
@@ -1269,7 +1466,7 @@ impl Compiler {
 
         Ok(commands)
     }
-
+    
     pub fn generate_instructions(&self, commands: Vec<Command>) -> Result<Vec<Instruction>, ErrorKind> {
         macro_rules! print_error {
             ($line_pos:expr, $err_kind:ident, $msg:expr) => {{
@@ -1351,7 +1548,7 @@ impl Compiler {
                 FunctionHeader { .. } => {
                     panic!("FunctionHeader inside a function/boot");
                 }
-                VariableDecl { shadowing, name, op, expr } => {
+                VariableDecl { shadowing, ident: name, op, expr } => {
                     if shadowing {
                         todo!();
                     } else {
@@ -1362,6 +1559,8 @@ impl Compiler {
                                 "unable to find free VM register for variable `{}`", name.ident
                             ));
                         };
+
+                        registers[free_register] = Register::Variable { name: name.ident, ty: name.ty }
                     }
                 }
                 _ => {
