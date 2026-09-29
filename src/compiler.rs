@@ -33,7 +33,7 @@ enum TokenKind {
     Sub,
     Mul,
     Div,
-    Mod,
+    Rem,
     
     /// `=`
     Equality,
@@ -452,7 +452,7 @@ impl Compiler {
                     '-' => Some(TokenKind::Sub),
                     '*' => Some(TokenKind::Mul),
                     '/' => Some(TokenKind::Div),
-                    '%' => Some(TokenKind::Mod),
+                    '%' => Some(TokenKind::Rem),
 
                     '!' => {
                         if chars.peek().is_some_and(|ch| *ch == '=') {
@@ -905,7 +905,7 @@ impl Compiler {
         Ok(expr)
     }
 
-    fn optimize_expression(&self, expr: Expression, line_pos: usize) -> Result<Expression, ErrorKind> {
+    /* fn optimize_expression(&self, expr: Expression, line_pos: usize) -> Result<Expression, ErrorKind> {
         macro_rules! print_error {
             ($err_kind:ident, $msg:expr) => {{
                 eprintln!("[{}]: line {}:", self.filename, line_pos);
@@ -963,7 +963,7 @@ impl Compiler {
                         0
                     }
 
-                    Mod | Div | Mul | LogicalNot => 5,
+                    Rem | Div | Mul | LogicalNot => 5,
 
                     Add | Sub => 4,
 
@@ -1028,6 +1028,9 @@ impl Compiler {
                     let value: f32 = match expr_a[ppos].kind {
                         Add => left!() + right,
                         Sub => left!() - right,
+                        Mul => left!() * right,
+                        Div => left!() / right,
+                        Rem => left!() % right,
                         // ...
                     };
 
@@ -1041,7 +1044,7 @@ impl Compiler {
         }
 
         Ok(expr_a)
-    }
+    } */
 
     fn calculate_depths(&self, expr: &[Token], line_pos: usize) -> Vec<u8> {
         let mut error: Option<ErrorKind> = None;
