@@ -4,6 +4,6 @@
 
 - [ ] Bytecode compiler
 
-- [ ] Bytecode interpreter
+- [ ] Virtual machine
 
 - [ ] Documentation and README
