@@ -1,0 +1,17 @@
+func say_hello() void
+    println "hello, WF-180!"
+end
+
+say_hello
+
+# gray background
+
+fill_screen 31, 31, 31
+
+# yellow rectangle. analog of "hello, world!" text
+
+let x:number = 16
+let y:number = 16
+let w:number = 64
+let h:number = 32
+rect x, y, w, h, 255, 255, 0

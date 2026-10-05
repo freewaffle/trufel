@@ -1,0 +1,11 @@
+newcont $0
+
+setcont $0, $0, GPU_SETPIXEL
+setcont $0, $1, 6 # X
+setcont $0, $2, 6 # Y
+setcont $0, $3, 8 # orange color
+
+int GPU, $0
+
+setcont $0, $0, GPU_UPDSCR
+int GPU, $0
