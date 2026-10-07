@@ -91,6 +91,21 @@ struct Instruction {
     pub kind: InstructionKind,
 }
 
+#[derive(PartialEq, Debug, Clone)]
+#[repr(u8)]
+enum TokenKind {
+    Identifier(String),
+    String(String),
+    Number(f32),
+    RawNumber(u32),
+
+    Comma,
+}
+
+struct Token {
+    pub kind: TokenKind,
+}
+
 // #[repr(u8)]
 pub enum ErrorKind {}
 
@@ -104,6 +119,19 @@ impl Assembler {
         Self {
             filename
         }
+    }
+
+    pub fn generate_bytecode(&self, file: File) -> Result<Vec<u8>, ErrorKind> {
+        let mut code: Vec<u8> = Vec::new();
+
+        let reader = BufReader::new(file);
+        let input_lines = reader.lines().map(|line| line.unwrap());
+
+        for (line_number, line) in (1..).zip(input_lines) {
+            for char in line.chars() {}
+        }
+
+        Ok(code)
     }
 }
 
