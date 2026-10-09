@@ -106,10 +106,12 @@ enum TokenKind {
     Dollar,
 }
 
+#[derive(PartialEq, Debug)]
 struct Token {
     pub kind: TokenKind,
 }
 
+#[derive(Debug)]
 #[repr(u8)]
 pub enum ErrorKind {
     UnrecognizedCharacter,
@@ -431,4 +433,46 @@ pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorK
 
     // Ok(bytecode)
     Ok(Vec::new())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_token_generator() {
+        macro_rules! token {
+            ($kind:ident) => {
+                Token {
+                    kind: TokenKind::$kind
+                }
+            };
+
+            ($kind:ident, $value:expr) => {
+                Token {
+                    kind: TokenKind::$kind($value)
+                }
+            };
+        }
+
+        let input = "ident1 123.45, ident2, $567";
+
+        let expected = vec![
+            token!(Identifier, String::from("ident1")),
+            token!(Number, 123.45),
+            token!(Comma),
+            token!(Identifier, String::from("ident2")),
+            token!(Comma),
+            token!(Address, 567),
+        ];
+
+        let asm = Assembler::new(String::from("<waffle>"));
+
+        let result = asm.generate_tokens(String::from(input), 0).unwrap();
+
+        // println!("EXPECTED >>> {expected:#?}");
+        println!("RESULT >>> {result:#?}");
+
+        assert_eq!(result, expected)
+    }
 }
