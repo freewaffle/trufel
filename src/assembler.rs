@@ -287,26 +287,26 @@ impl Assembler {
                 continue
             }
 
-            let identifier: bool = is_identifier_token!(char);
-            let number: bool = char.is_ascii_digit();
-            let string: bool = is_string_token!(char);
-            let line_comment: bool = char == '#';
+            let is_identifier: bool = is_identifier_token!(char);
+            let is_number: bool = char.is_ascii_digit();
+            let is_string: bool = is_string_token!(char);
+            let is_line_comment: bool = char == '#';
 
             let mut new_token: Option<Token> = None;
 
-            if identifier {
+            if is_identifier {
                 let ident: String = collect_identifier!(char);
                 let token = Token { kind: TokenKind::Identifier(ident) };
                 new_token = Some(token);
             }
 
-            if number {
+            if is_number {
                 let num: f32 = collect_number!(char);
                 let token = Token { kind: TokenKind::Number(num) };
                 new_token = Some(token);
             }
 
-            if string {
+            if is_string {
                 let mut string: String = String::new();
                 let mut closed = false;
 
@@ -327,7 +327,7 @@ impl Assembler {
                 }
             }
 
-            if line_comment {
+            if is_line_comment {
                 break;
             }
 
