@@ -163,15 +163,21 @@ impl Assembler {
             };
         }
 
-        macro_rules! is_string_token {
+        macro_rules! is_string_quote {
             ($ch:expr) => {
                 ($ch == '"' || $ch == '\'')
             };
         }
 
-        macro_rules! is_identifier_token {
+        macro_rules! is_identifier {
             ($ch:expr) => {
                 ($ch.is_ascii_alphabetic() || $ch == '_')
+            };
+        }
+
+        macro_rules! is_digit {
+            ($ch:expr) => {
+                $ch.is_ascii_digit()
             };
         }
 
@@ -186,9 +192,9 @@ impl Assembler {
                 continue
             }
 
-            let is_identifier: bool = is_identifier_token!(char);
-            let is_number: bool = char.is_ascii_digit();
-            let is_string: bool = is_string_token!(char);
+            let is_identifier: bool = is_identifier!(char);
+            let is_digit: bool = is_digit!(char);
+            let is_string: bool = is_string_quote!(char);
             let is_line_comment: bool = char == '#';
 
             let mut new_token: Option<Token> = None;
@@ -208,20 +214,19 @@ impl Assembler {
                         ));
                     }
 
-                    let is_char = is_identifier_token!(ch) || ch.is_ascii_digit();
-                    if !is_char {
+                    if is_identifier!(ch) || ch.is_ascii_digit() {
+                        ident.push(ch);
+                        next_char!();
+                    } else {
                         break;
                     }
-
-                    ident.push(ch);
-                    next_char!();
                 }
 
                 let token = Token { kind: TokenKind::Identifier(ident) };
                 new_token = Some(token);
             }
 
-            if is_number {
+            if is_digit {
                 let mut num_a: u32 = to_digit!(char);
                 let mut num_b: u32 = 0;
                 let mut collecting_a = true;
@@ -229,7 +234,20 @@ impl Assembler {
                 while let Some(char) = chars.peek() {
                     let char = *char;
 
-                    if !char.is_ascii_digit() {
+                    if is_digit!(char) {
+                        let digit = to_digit!(char);
+                        assert!(digit < 10);
+
+                        if collecting_a {
+                            num_op!(num_a, checked_mul, 10);
+                            num_op!(num_a, checked_add, digit);
+                        } else {
+                            num_op!(num_b, checked_mul, 10);
+                            num_op!(num_b, checked_add, digit);
+                        }
+
+                        next_char!();
+                    } else {
                         if char == '.' {
                             if collecting_a {
                                 collecting_a = false;
@@ -242,19 +260,6 @@ impl Assembler {
                             break;
                         }
                     }
-
-                    let digit = to_digit!(char);
-                    assert!(digit < 10);
-
-                    if collecting_a {
-                        num_op!(num_a, checked_mul, 10);
-                        num_op!(num_a, checked_add, digit);
-                    } else {
-                        num_op!(num_b, checked_mul, 10);
-                        num_op!(num_b, checked_add, digit);
-                    }
-
-                    next_char!();
                 }
 
                 let snum: String = format!("{num_a}.{num_b}");
@@ -269,7 +274,7 @@ impl Assembler {
                 let mut closed = false;
 
                 while let Some(char) = next_char!() {
-                    if is_string_token!(char) {
+                    if is_string_quote!(char) {
                         closed = true;
                         break;
                     }
@@ -301,21 +306,21 @@ impl Assembler {
                             while let Some(char) = chars.peek() {
                                 let char = *char;
 
-                                if !char.is_ascii_digit() {
+                                if is_digit!(char) {
+                                    let digit = to_digit!(char);
+                                    assert!(digit < 10);
+
+                                    num_op!(num, checked_mul, 10);
+                                    num_op!(num, checked_add, digit);
+
+                                    next_char!();
+                                } else {
                                     if char == '.' {
                                         print_error!(DotInAddress, "dots cannot appear in addresses, as they cannot be float");
                                     } else {
                                         break;
                                     }
                                 }
-
-                                let digit = to_digit!(char);
-                                assert!(digit < 10);
-
-                                num_op!(num, checked_mul, 10);
-                                num_op!(num, checked_add, digit);
-
-                                next_char!();
                             }
 
                             Some(TokenKind::Address(num))
