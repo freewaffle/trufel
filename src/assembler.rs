@@ -149,7 +149,7 @@ impl Assembler {
 
         macro_rules! to_digit {
             ($ch:expr) => {
-                $ch.to_digit(10).unwrap()
+                $ch.to_digit(10).expect(format!("expected digit, got: `{}`", $ch).as_str())
             };
         }
 
@@ -175,11 +175,28 @@ impl Assembler {
             };
         }
 
-        macro_rules! collect_identifier {
-            ($start_char:expr) => {{
+        macro_rules! next_char {
+            () => {{
+                chars.next()
+            }};
+        }
+
+        while let Some(char) = next_char!() {
+            if char.is_ascii_whitespace() {
+                continue
+            }
+
+            let is_identifier: bool = is_identifier_token!(char);
+            let is_number: bool = char.is_ascii_digit();
+            let is_string: bool = is_string_token!(char);
+            let is_line_comment: bool = char == '#';
+
+            let mut new_token: Option<Token> = None;
+
+            if is_identifier {
                 let mut ident: String = String::with_capacity(MAX_IDENTIFIER_LENGTH);
 
-                ident.push($start_char);
+                ident.push(char);
 
                 while let Some(ch) = chars.peek() {
                     let ch = *ch;
@@ -200,13 +217,12 @@ impl Assembler {
                     next_char!();
                 }
 
-                ident
-            }};
-        }
+                let token = Token { kind: TokenKind::Identifier(ident) };
+                new_token = Some(token);
+            }
 
-        macro_rules! collect_number {
-            ($start_char:expr) => {{
-                let mut num_a: u32 = to_digit!($start_char);
+            if is_number {
+                let mut num_a: u32 = to_digit!(char);
                 let mut num_b: u32 = 0;
                 let mut collecting_a = true;
 
@@ -244,64 +260,6 @@ impl Assembler {
                 let snum: String = format!("{num_a}.{num_b}");
                 let num: f32 = snum.parse().unwrap();
 
-                num
-            }};
-        }
-
-        macro_rules! collect_address_number {
-            ($start_char:expr) => {{
-                let mut num: u32 = to_digit!($start_char);
-
-                while let Some(char) = chars.peek() {
-                    let char = *char;
-
-                    if !char.is_ascii_digit() {
-                        if char == '.' {
-                            print_error!(DotInAddress, "dots cannot appear in addresses, as they cannot be float");
-                        } else {
-                            break;
-                        }
-                    }
-
-                    let digit = to_digit!(char);
-                    assert!(digit < 10);
-
-                    num_op!(num, checked_mul, 10);
-                    num_op!(num, checked_add, digit);
-
-                    next_char!();
-                }
-
-                num
-            }};
-        }
-
-        macro_rules! next_char {
-            () => {{
-                chars.next()
-            }};
-        }
-
-        while let Some(char) = next_char!() {
-            if char.is_ascii_whitespace() {
-                continue
-            }
-
-            let is_identifier: bool = is_identifier_token!(char);
-            let is_number: bool = char.is_ascii_digit();
-            let is_string: bool = is_string_token!(char);
-            let is_line_comment: bool = char == '#';
-
-            let mut new_token: Option<Token> = None;
-
-            if is_identifier {
-                let ident: String = collect_identifier!(char);
-                let token = Token { kind: TokenKind::Identifier(ident) };
-                new_token = Some(token);
-            }
-
-            if is_number {
-                let num: f32 = collect_number!(char);
                 let token = Token { kind: TokenKind::Number(num) };
                 new_token = Some(token);
             }
@@ -337,8 +295,29 @@ impl Assembler {
                     ':' => Some(TokenKind::Colon),
 
                     '$' => {
-                        if next_char!().is_some_and(|char| char.is_ascii_digit()) {
-                            let num: u32 = collect_address_number!(char);
+                        if let Some(char) = next_char!() && char.is_ascii_digit() {
+                            let mut num: u32 = to_digit!(char);
+
+                            while let Some(char) = chars.peek() {
+                                let char = *char;
+
+                                if !char.is_ascii_digit() {
+                                    if char == '.' {
+                                        print_error!(DotInAddress, "dots cannot appear in addresses, as they cannot be float");
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                let digit = to_digit!(char);
+                                assert!(digit < 10);
+
+                                num_op!(num, checked_mul, 10);
+                                num_op!(num, checked_add, digit);
+
+                                next_char!();
+                            }
+
                             Some(TokenKind::Address(num))
                         } else {
                             print_error!(DollarWithoutAddress, "dollar sign without a following address");
@@ -469,8 +448,8 @@ mod tests {
 
         let result = asm.generate_tokens(String::from(input), 0).unwrap();
 
-        // println!("EXPECTED >>> {expected:#?}");
-        println!("RESULT >>> {result:#?}");
+        /* println!("EXPECTED >>> {expected:#?}");
+        println!("RESULT >>> {result:#?}"); */
 
         assert_eq!(result, expected)
     }
