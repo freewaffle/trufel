@@ -103,7 +103,6 @@ enum TokenKind {
 
     Comma,
     Colon,
-    Dollar,
 }
 
 #[derive(PartialEq, Debug)]
@@ -283,7 +282,7 @@ impl Assembler {
             }};
         }
 
-        for char in next_char!() {
+        while let Some(char) = next_char!() {
             if char.is_ascii_whitespace() {
                 continue
             }
