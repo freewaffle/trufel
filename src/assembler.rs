@@ -1,6 +1,8 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
+const MAX_IDENTIFIER_LENGTH: usize = 32;
+
 const DEBUG: bool = true;
 
 #[allow(dead_code)]
@@ -97,17 +99,27 @@ enum TokenKind {
     Identifier(String),
     String(String),
     Number(f32),
-    RawNumber(u32),
+    Address(u32),
 
     Comma,
+    Colon,
+    Dollar,
 }
 
 struct Token {
     pub kind: TokenKind,
 }
 
-// #[repr(u8)]
-pub enum ErrorKind {}
+#[repr(u8)]
+pub enum ErrorKind {
+    UnrecognizedCharacter,
+    NumberOverflow,
+    TooLongIdentifier,
+    RedundantDot,
+    DotInAddress,
+    UnclosedString,
+    DollarWithoutAddress
+}
 
 struct Assembler {
     pub filename: String
@@ -128,7 +140,234 @@ impl Assembler {
         let input_lines = reader.lines().map(|line| line.unwrap());
 
         for (line_number, line) in (1..).zip(input_lines) {
-            for char in line.chars() {}
+            let mut tokens: Vec<Token> = Vec::new();
+
+            let mut chars = line.chars().peekable();
+
+            macro_rules! print_error {
+                ($err_kind:ident, $msg:expr) => {{
+                    eprintln!("{}: line {}:", self.filename, line_number);
+                    eprintln!("  error: {}", $msg);
+                    return Err(ErrorKind::$err_kind);
+                }};
+            }
+
+            macro_rules! to_digit {
+                ($ch:expr) => {
+                    $ch.to_digit(10).unwrap()
+                };
+            }
+
+            macro_rules! num_op {
+                ($var:ident, $func:ident, $func_expr:expr) => {
+                    if let Some(result) = $var.$func($func_expr) {
+                        $var = result;
+                    } else {
+                        print_error!(NumberOverflow, "number overflow");
+                    }
+                };
+            }
+
+            macro_rules! is_string_token {
+                ($ch:expr) => {
+                    ($ch == '"' || $ch == '\'')
+                };
+            }
+
+            macro_rules! is_identifier_token {
+                ($ch:expr) => {
+                    ($ch.is_ascii_alphabetic() || $ch == '_')
+                };
+            }
+
+            macro_rules! collect_identifier {
+                ($start_char:expr) => {{
+                    let mut ident: String = String::with_capacity(MAX_IDENTIFIER_LENGTH);
+
+                    ident.push($start_char);
+
+                    while let Some(ch) = chars.peek() {
+                        let ch = *ch;
+
+                        if ident.len() >= MAX_IDENTIFIER_LENGTH {
+                            print_error!(TooLongIdentifier, format!(
+                                "too long identifier (max length is {} symbols)",
+                                MAX_IDENTIFIER_LENGTH
+                            ));
+                        }
+
+                        let is_char = is_identifier_token!(ch) || ch.is_ascii_digit();
+                        if !is_char {
+                            break;
+                        }
+
+                        ident.push(ch);
+                        next_char!();
+                    }
+
+                    ident
+                }};
+            }
+
+            macro_rules! collect_number {
+                ($start_char:expr) => {{
+                    let mut num_a: u32 = to_digit!($start_char);
+                    let mut num_b: u32 = 0;
+                    let mut collecting_a = true;
+
+                    while let Some(char) = chars.peek() {
+                        let char = *char;
+
+                        if !char.is_ascii_digit() {
+                            if char == '.' {
+                                if collecting_a {
+                                    collecting_a = false;
+                                    next_char!();
+                                    continue;
+                                } else {
+                                    print_error!(RedundantDot, "redundant dot near number");
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+
+                        let digit = to_digit!(char);
+                        assert!(digit < 10);
+
+                        if collecting_a {
+                            num_op!(num_a, checked_mul, 10);
+                            num_op!(num_a, checked_add, digit);
+                        } else {
+                            num_op!(num_b, checked_mul, 10);
+                            num_op!(num_b, checked_add, digit);
+                        }
+
+                        next_char!();
+                    }
+
+                    let snum: String = format!("{num_a}.{num_b}");
+                    let num: f32 = snum.parse().unwrap();
+
+                    num
+                }};
+            }
+
+            macro_rules! collect_address_number {
+                ($start_char:expr) => {{
+                    let mut num: u32 = to_digit!($start_char);
+
+                    while let Some(char) = chars.peek() {
+                        let char = *char;
+
+                        if !char.is_ascii_digit() {
+                            if char == '.' {
+                                print_error!(DotInAddress, "dots cannot appear in addresses, as they cannot be float");
+                            } else {
+                                break;
+                            }
+                        }
+
+                        let digit = to_digit!(char);
+                        assert!(digit < 10);
+
+                        num_op!(num, checked_mul, 10);
+                        num_op!(num, checked_add, digit);
+
+                        next_char!();
+                    }
+
+                    num
+                }};
+            }
+
+            macro_rules! next_char {
+                () => {{
+                    chars.next()
+                }};
+            }
+
+            for char in next_char!() {
+                if char.is_ascii_whitespace() {
+                    continue
+                }
+
+                let identifier: bool = is_identifier_token!(char);
+                let number: bool = char.is_ascii_digit();
+                let string: bool = is_string_token!(char);
+                let line_comment: bool = char == '#';
+
+                let mut new_token: Option<Token> = None;
+
+                if identifier {
+                    let ident: String = collect_identifier!(char);
+                    let token = Token { kind: TokenKind::Identifier(ident) };
+                    new_token = Some(token);
+                }
+
+                if number {
+                    let num: f32 = collect_number!(char);
+                    let token = Token { kind: TokenKind::Number(num) };
+                    new_token = Some(token);
+                }
+
+                if string {
+                    let mut string: String = String::new();
+                    let mut closed = false;
+
+                    while let Some(char) = next_char!() {
+                        if is_string_token!(char) {
+                            closed = true;
+                            break;
+                        }
+
+                        string.push(char);
+                    }
+
+                    if closed {
+                        let token = Token { kind: TokenKind::String(string) };
+                        new_token = Some(token);
+                    } else {
+                        print_error!(UnclosedString, "unclosed string");
+                    }
+                }
+
+                if line_comment {
+                    break;
+                }
+
+                if new_token.is_none() {
+                    let kind = match char {
+                        ',' => Some(TokenKind::Comma),
+                        ':' => Some(TokenKind::Colon),
+
+                        '$' => {
+                            if next_char!().is_some_and(|char| char.is_ascii_digit()) {
+                                let num: u32 = collect_address_number!(char);
+                                Some(TokenKind::Address(num))
+                            } else {
+                                print_error!(DollarWithoutAddress, "dollar sign without a following address");
+                            }
+                        }
+
+                        // whitespaces and tabs are skipped in the beginning
+                        _ => None
+                    };
+
+                    if let Some(kind) = kind {
+                        new_token = Some(Token { kind });
+                    } // else None
+                }
+
+                if let Some(tok) = new_token {
+                    tokens.push(tok);
+                } else {
+                    print_error!(UnrecognizedCharacter, format!(
+                        "unrecognized character: '{}'",
+                        char
+                    ));
+                }
+            }
         }
 
         Ok(code)
