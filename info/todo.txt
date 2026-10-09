@@ -1,5 +1,6 @@
 --- assembler ---
 1. move InstructionKind into instr.rs
+2. rename assembler.rs -> asm.rs
 --- trulang ---
 1. replace Vec<Token> with Expression
 2. dont use peekable() in collect_expression
