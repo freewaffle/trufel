@@ -7,6 +7,7 @@ use std::io::{Read, Seek};
 
 mod magic;
 mod vm;
+mod instr;
 mod assembler;
 // mod compiler;
 
