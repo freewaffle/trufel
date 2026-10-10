@@ -1,3 +1,4 @@
+use std::fmt::format;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
@@ -23,6 +24,35 @@ enum TokenKind {
     Colon,
 }
 
+impl TokenKind {
+    #[inline]
+    fn description(&self, with_article: bool) -> &str {
+        use TokenKind::*;
+
+        if with_article {
+            match self {
+                Identifier(..) => "an identifier",
+                String(..) => "a string literal",
+                Number(..) => "a number",
+                Address(..) => "an address `$number`",
+
+                Comma => "a comma",
+                Colon => "a colon",
+            }
+        } else {
+            match self {
+                Identifier(..) => "identifier",
+                String(..) => "string literal",
+                Number(..) => "number",
+                Address(..) => "address `$number`",
+
+                Comma => "comma",
+                Colon => "colon",
+            }
+        }
+    }
+}
+
 #[derive(PartialEq, Debug)]
 struct Token {
     pub kind: TokenKind,
@@ -37,11 +67,45 @@ pub enum ErrorKind {
     RedundantDot,
     DotInAddress,
     UnclosedString,
-    DollarWithoutAddress
+    DollarWithoutAddress,
+    UnexpectedTokens,
 }
 
 struct Assembler {
     pub filename: String
+}
+
+#[inline]
+fn unexpected_token_message(unexpected: TokenKind, expected: &[TokenKind]) -> String {
+    let mut msg: String;
+
+    if expected.is_empty() {
+        msg = format!(
+            "unexpected {}",
+            unexpected.description(false)
+        );
+    } else {
+        let mut iter = expected.iter().enumerate();
+        let (_, first) = iter.next().unwrap();
+
+        msg = format!(
+            "unexpected {}, expected {}",
+            unexpected.description(false),
+            first.description(true)
+        );
+
+        for (pos, kind) in iter {
+            let connector = if pos + 1 == expected.len() {
+                " or "
+            } else {
+                ", "
+            };
+
+            msg += format!("{connector} {}", kind.description(true)).as_str();
+        }
+    }
+
+    msg
 }
 
 impl Assembler {
@@ -269,14 +333,40 @@ impl Assembler {
         Ok(tokens)
     }
 
-    pub fn generate_instructions(&self, file: File) -> Result<Vec<u8>, ErrorKind> {
-        let mut code: Vec<u8> = Vec::new();
+    pub fn generate_instructions(&self, file: File) -> Result<Vec<Instruction>, ErrorKind> {
+        let mut code: Vec<Instruction> = Vec::new();
 
         let reader = BufReader::new(file);
         let input_lines = reader.lines().map(|line| line.unwrap());
 
         for (line_number, line) in (1u32..).zip(input_lines) {
+            macro_rules! print_error {
+                ($err_kind:ident, $msg:expr) => {{
+                    eprintln!("{}: line {}:", self.filename, line_number);
+                    eprintln!("  error: {}", $msg);
+                    return Err(ErrorKind::$err_kind);
+                }};
+            }
+
             let tokens: Vec<Token> = self.generate_tokens(line, line_number)?;
+
+            let first_token = if let Some(tok) = tokens.first() {
+                tok
+            } else {
+                // the Vec is empty
+                continue;
+            };
+
+            use TokenKind::*;
+            match &first_token.kind {
+                Identifier(ident) => {}
+
+                Colon => {}
+
+                _ => {
+                    print_error!(UnexpectedTokens, "expected an identifier or a colon");
+                }
+            }
         }
 
         Ok(code)
@@ -284,53 +374,19 @@ impl Assembler {
 }
 
 pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorKind> {
-    let compiler = Assembler::new(filename);
+    let assembler = Assembler::new(filename);
 
-    /* let tokens = compiler.parse_file(file)?;
-
-    if DEBUG {
-        println!("------------ TOKENS ------------");
-
-        for line in tokens.iter() {
-            if let Some(tok) = line.first() {
-                print!("[{}] ", tok.line_pos);
-            } else {
-                continue;
-            }
-
-            for token in line {
-                print!("{:?}, ", token.kind);
-            }
-
-            println!();
-        }
-
-        println!("--------------------------------\n");
-    }
-
-    let commands = compiler.parse_tokens(tokens)?;
-    
-    if DEBUG {
-        println!("----------- COMMANDS -----------");
-
-        for command in commands.iter() {
-            println!("[{}] {:#?}", command.line_pos, command.kind);
-        }
-
-        println!("--------------------------------\n");
-    }
-
-    let bytecode: Vec<Instruction> = compiler.generate_instructions(commands)?;
+    let instrs = assembler.generate_instructions(file)?;
 
     if DEBUG {
         println!("--------- INSTRUCTIONS ---------");
 
-        for (index, instr) in bytecode.iter().enumerate() {
+        for (index, instr) in instrs.iter().enumerate() {
             println!("[{}] {:#?}", index, instr.kind);
         }
 
         println!("--------------------------------\n");
-    } */
+    }
 
     // Ok(bytecode)
     Ok(Vec::new())
