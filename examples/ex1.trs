@@ -1,40 +1,54 @@
-# числа с $ вставляются напрямую
-# числа без $ превращаются в константу,
-# вместо них подставляется их индекс в списке констант
-
 newcont $0
 
 
+# $0[0] = GPU_TOGGLEBACKBUF
+    movk $1, 0  # index
+    movk $2, GPU_TOGGLEBACKBUF
+    setcont $0, $1, $2
+
+# $0[1] = 1  # enabled
+    movk $1, 1  # index
+    movk $2, 1
+    setcont $0, $1, $2
+
+# sending command
+    movk $1, GPU
+    int $1, $0
+
+
 # $0[0] = GPU_SETPIXEL
-    movk $1, 0
+    movk $1, 0  # index
     movk $2, GPU_SETPIXEL
     setcont $0, $1, $2
 
 # $0[1] = 6  # X
-    movk $1, 1
+    movk $1, 1  # index
     movk $2, 6
     setcont $0, $1, $2
 
 # $0[2] = 6  # Y
-    movk $1, 2
+    movk $1, 2  # index
     movk $2, 6
     setcont $0, $1, $2
 
 # $0[3] = 8  # orange color
-    movk $1, 3
+    movk $1, 3  # index
     movk $2, 8
     setcont $0, $1, $2
 
-# sending SETPIXEL command to the GPU
+# sending command
     movk $1, GPU
     int $1, $0
 
+:upd
 
 # $0[0] = GPU_UPDSCR
-    movk $1, 0
+    movk $1, 0  # index
     movk $2, GPU_UPDSCR
     setcont $0, $1, $2
 
-# sending UPDSCR command to the GPU
+# sending command
     movk $1, GPU
     int $1, $0
+
+goto upd
