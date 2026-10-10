@@ -1,4 +1,4 @@
-// remove this in the future!!!!!!
+// remove this lint in the future!!!!!!
 #[allow(dead_code)]
 #[derive(Debug)]
 #[repr(u8)]
