@@ -49,7 +49,7 @@ pub enum InstructionKind {
     
     /// if `reg > 0`: `pc += 1`
     Test { reg: u8 },
-    Jmp  { pos: u32 },
+    Goto  { pos: u32 },
     Call { pos: u32 },
 
     /// `r(reg) = newcont(size)`
