@@ -54,11 +54,11 @@ pub enum InstructionKind {
 
     /// `r(reg) = newcont(size)`
     NewCont { reg: u8 },
-    /// `r(reg) = c(cont)[r(pos)]`
+    /// `r(reg) = c(r(cont))[r(pos)]`
     GetCont { reg: u8, cont: u8, pos: u8 },
-    /// `c(cont)[r(pos)] = r(value)`
+    /// `c(r(cont))[r(pos)] = r(value)`
     SetCont { cont: u8, pos: u8, value: u8 },
-    /// `c(cont)[r(pos)] = r(value)`
+    /// `c(r(cont))[r(pos)] = r(value)`
     /// 
     /// same as `SetCont`, but panics if field `pos`
     /// wasn't set before.
