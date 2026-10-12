@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 use crate::instr::InstructionKind;
+use crate::vm::MAX_REGISTERS_COUNT;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
 
@@ -19,6 +20,7 @@ enum TokenKind {
     String(String),
     Number(f32),
     Address(u32),
+    Register(u8),
 
     Comma,
     Colon,
@@ -53,7 +55,7 @@ impl TokenKind {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 struct Token {
     pub kind: TokenKind,
 }
@@ -69,43 +71,13 @@ pub enum ErrorKind {
     UnclosedString,
     DollarWithoutAddress,
     UnexpectedTokens,
+    ExpectedTokens
+    ExpectedArgument,
+    MalformedNumber
 }
 
 struct Assembler {
     pub filename: String
-}
-
-#[inline]
-fn unexpected_token_message(unexpected: TokenKind, expected: &[TokenKind]) -> String {
-    let mut msg: String;
-
-    if expected.is_empty() {
-        msg = format!(
-            "unexpected {}",
-            unexpected.description(false)
-        );
-    } else {
-        let mut iter = expected.iter().enumerate();
-        let (_, first) = iter.next().unwrap();
-
-        msg = format!(
-            "unexpected {}, expected {}",
-            unexpected.description(false),
-            first.description(true)
-        );
-
-        for (pos, kind) in iter {
-            let connector = if pos + 1 == expected.len() {
-                " or "
-            } else {
-                ", "
-            };
-
-            msg += format!("{connector} {}", kind.description(true)).as_str();
-        }
-    }
-
-    msg
 }
 
 impl Assembler {
@@ -281,7 +253,7 @@ impl Assembler {
                     ',' => Some(TokenKind::Comma),
                     ':' => Some(TokenKind::Colon),
 
-                    '$' => {
+                    /* '$' => {
                         if let Some(char) = next_char!() && char.is_ascii_digit() {
                             let mut num: u32 = to_digit!(char);
 
@@ -309,7 +281,7 @@ impl Assembler {
                         } else {
                             print_error!(DollarWithoutAddress, "dollar sign without a following address");
                         }
-                    }
+                    } */
 
                     // whitespaces and tabs are skipped in the beginning
                     _ => None
@@ -328,6 +300,54 @@ impl Assembler {
                     char
                 ));
             }
+        }
+
+        Ok(tokens)
+    }
+
+    fn parse_numbers(&self, tokens: Vec<Token>, line_number: u32) -> Result<Vec<Token>, ErrorKind> {
+        macro_rules! print_error {
+            ($err_kind:ident, $msg:expr) => {{
+                eprintln!("{}: line {}:", self.filename, line_number);
+                eprintln!("  error: {}", $msg);
+                return Err(ErrorKind::$err_kind);
+            }};
+        }
+
+        let mut iter = tokens.into_iter().peekable();
+        let mut tokens: Vec<Token> = Vec::new();
+
+        use TokenKind::*;
+        while let Some(token) = iter.next() {
+            let token = if let TokenKind::Identifier(ident) = token.kind {
+                match ident.as_str() {
+                    "r" => {
+                        if let Some(nt) = iter.next() &&
+                        let TokenKind::Number(num) = nt.kind {
+                            let index_32: u32 = if num % 1. == 0. {
+                                num as u32
+                            } else {
+                                print_error!(MalformedNumber, "register index with floating point");
+                            };
+
+                            let index_8: u8 = if let Ok(num) = index_32.try_into() {
+                                num
+                            } else {
+                                print_error!(MalformedNumber, "register index out of bounds");
+                            };
+
+                            if index_8 < MAX_REGISTERS_COUNT as u8 {
+                                Register(index_8)
+                            } else {
+                                print_error!(MalformedNumber, "register index out of bounds");
+                            }
+                        } else {
+                            print_error!(ExpectedTokens, "expected a register index after 'r' label");
+                        }
+                    }
+                }
+            } else {
+            };
         }
 
         Ok(tokens)
@@ -357,9 +377,62 @@ impl Assembler {
                 continue;
             };
 
+            let mut args: Vec<Token> = Vec::new();
+
+            if let Some(tokens) = tokens.get(1..) {
+                for slice in tokens.split(|tok| tok.kind == TokenKind::Comma) {
+                    if slice.len() == 1 {
+                        args.push(slice[0].clone());
+                    } else {
+                        // mov $0 $1, $2
+                        //        ^^ error
+                        print_error!(
+                            UnexpectedTokens,
+                            "multiple tokens in an argument. did you forget inserting a comma?"
+                        );
+                    }
+                }
+            }
+
+            macro_rules! get_arg {
+                ($pos:expr, $tok_kind:ident) => {
+                    match args.get($pos) {
+                        Some(tok) => if let TokenKind::$tok_kind(value) = tok.kind {
+                            Some(value)
+                        } else {
+                            None
+                        },
+
+                        None => None
+                    }
+                };
+            }
+
             use TokenKind::*;
+            use InstructionKind as Instr;
             match &first_token.kind {
-                Identifier(ident) => {}
+                Identifier(ident) => {
+                    /* let ident: &str = ident.to_lowercase().as_str();
+                    let new_instr = match ident {
+                        "nop" => { Instr::Nop }
+
+                        "mov" => {
+                            let r0 = if let Some(addr) = get_arg!(0, Address) {
+                                addr
+                            } else {
+                                print_error!(ExpectedArgument, "expected an address at argument #0");
+                            };
+
+                            let r1 = if let Some(addr) = get_arg!(1, Address) {
+                                addr
+                            } else {
+                                print_error!(ExpectedArgument, "expected an address at argument #1");
+                            };
+
+                            Instr::Mov { r0: (), r1: () }
+                        }
+                    }; */
+                }
 
                 Colon => {}
 
