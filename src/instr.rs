@@ -12,8 +12,8 @@ pub enum InstructionKind {
 
     /// `r(r0) = r(r1)`
     Mov { r0: u8, r1: u8 },
-    /// `r(reg) = k(kn)`
-    MovK { reg: u8, kn: u16 },
+    /// `r(reg) = k(kaddr)`
+    MovK { reg: u8, kaddr: u16 },
     /// `r(r0 ..= rn) = void`
     MVoid { r0: u8, rn: u8 },
 
