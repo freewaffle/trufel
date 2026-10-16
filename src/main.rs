@@ -8,7 +8,7 @@ use std::io::{Read, Seek};
 mod magic;
 mod vm;
 mod instr;
-mod assembler;
+mod asm;
 // mod compiler;
 
 use magic::*;
@@ -83,7 +83,7 @@ fn main() {
         match extension {
             "trs" => {
                 #[allow(irrefutable_let_patterns)]
-                if let Ok(code) = assembler::compile_from_file(file, filename) {
+                if let Ok(code) = asm::compile_from_file(file, filename) {
                     code
                 } else {
                     // error details should have been printed
