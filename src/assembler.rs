@@ -27,7 +27,7 @@ enum TokenKind {
 }
 
 impl TokenKind {
-    #[inline]
+    /* #[inline]
     fn description(&self, with_article: bool) -> &str {
         use TokenKind::*;
 
@@ -52,7 +52,7 @@ impl TokenKind {
                 Colon => "colon",
             }
         }
-    }
+    } */
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -67,11 +67,9 @@ pub enum ErrorKind {
     NumberOverflow,
     TooLongIdentifier,
     RedundantDot,
-    DotInAddress,
     UnclosedString,
-    DollarWithoutAddress,
     UnexpectedTokens,
-    ExpectedTokens
+    ExpectedTokens,
     ExpectedArgument,
     MalformedNumber
 }
@@ -317,11 +315,15 @@ impl Assembler {
         let mut iter = tokens.into_iter().peekable();
         let mut tokens: Vec<Token> = Vec::new();
 
-        use TokenKind::*;
         while let Some(token) = iter.next() {
-            let token = if let TokenKind::Identifier(ident) = token.kind {
+            let prev_kind = token.kind;
+            let kind: TokenKind = if let TokenKind::Identifier(ident) = prev_kind {
+                // если текущий токен это идент, то проверяем его значение
+                use TokenKind::*;
                 match ident.as_str() {
+                    // регистр
                     "r" => {
+                        // если есть следующий токен, и это число:
                         if let Some(nt) = iter.next() &&
                         let TokenKind::Number(num) = nt.kind {
                             let index_32: u32 = if num % 1. == 0. {
@@ -345,9 +347,33 @@ impl Assembler {
                             print_error!(ExpectedTokens, "expected a register index after 'r' label");
                         }
                     }
+
+                    // адрес
+                    "a" => {
+                        // если есть следующий токен, и это число:
+                        if let Some(nt) = iter.next() &&
+                        let TokenKind::Number(num) = nt.kind {
+                            let address: u32 = if num % 1. == 0. {
+                                num as u32
+                            } else {
+                                print_error!(MalformedNumber, "address with floating point");
+                            };
+
+                            Address(address)
+                        } else {
+                            print_error!(ExpectedTokens, "expected an address after 'r' label");
+                        }
+                    }
+
+                    // в остальных случаях оставляем как есть
+                    _ => Identifier(ident)
                 }
             } else {
+                // если это не идент, то оставляем как есть
+                prev_kind
             };
+
+            tokens.push(Token { kind });
         }
 
         Ok(tokens)
@@ -469,22 +495,22 @@ pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorK
 mod tests {
     use super::*;
 
+    macro_rules! token {
+        ($kind:ident) => {
+            Token {
+                kind: TokenKind::$kind
+            }
+        };
+
+        ($kind:ident, $value:expr) => {
+            Token {
+                kind: TokenKind::$kind($value)
+            }
+        };
+    }
+
     #[test]
     fn test_token_generator() {
-        macro_rules! token {
-            ($kind:ident) => {
-                Token {
-                    kind: TokenKind::$kind
-                }
-            };
-
-            ($kind:ident, $value:expr) => {
-                Token {
-                    kind: TokenKind::$kind($value)
-                }
-            };
-        }
-
         let input = "ident1 123.45, ident2, $567";
 
         let expected = vec![
@@ -504,5 +530,37 @@ mod tests {
         println!("RESULT >>> {result:#?}"); */
 
         assert_eq!(result, expected)
+    }
+
+    #[test]
+    fn test_number_parser() {
+        let input = "r8 a777 ident 123";
+
+        let expected = vec![
+            token!(Register, 8),
+            token!(Address, 777),
+            token!(Identifier, String::from("ident")),
+            token!(Number, 123.),
+        ];
+
+        let asm = Assembler::new(String::from("<waffle>"));
+
+        let result = asm.generate_tokens(String::from(input), 0).unwrap();
+
+        /* println!("EXPECTED >>> {expected:#?}");
+        println!("RESULT >>> {result:#?}"); */
+
+        assert_eq!(result, expected)
+    }
+
+    #[test]
+    fn test_number_parser_error() {
+        let input = "r8.0 a777.7 a";
+
+        let asm = Assembler::new(String::from("<waffle>"));
+
+        let result = asm.generate_tokens(String::from(input), 0);
+
+        assert!(result.is_err())
     }
 }
