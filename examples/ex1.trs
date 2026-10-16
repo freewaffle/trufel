@@ -50,4 +50,5 @@ newcont r0
         movk r1, GPU
         int r1, r0
 
-    goto upd
+    movk r1, upd
+    goto r1

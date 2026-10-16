@@ -49,8 +49,14 @@ pub enum InstructionKind {
     
     /// if `reg > 0`: `pc += 1`
     Test { reg: u8 },
-    Goto  { pos: u32 },
-    Call { pos: u32 },
+    /// `pc = r(pos)`
+    Goto { pos: u8 },
+    /// `pc = r(pos)`
+    /// 
+    /// `r0 = argr`; `r1 = argr+1`
+    /// 
+    /// `r(retr) = ret`
+    Call { retr: u8, pos: u8, argr: u8 },
 
     /// `r(reg) = newcont(size)`
     NewCont { reg: u8 },
