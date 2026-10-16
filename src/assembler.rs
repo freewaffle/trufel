@@ -166,6 +166,13 @@ impl Assembler {
                         ));
                     }
 
+                    if ch.is_ascii_digit() && (
+                        ident == "r" ||
+                        ident == "a"
+                    ) {
+                        break;
+                    }
+
                     if is_identifier!(ch) || ch.is_ascii_digit() {
                         ident.push(ch);
                         next_char!();
@@ -299,6 +306,8 @@ impl Assembler {
                 ));
             }
         }
+
+        tokens = self.parse_numbers(tokens, line_number)?;
 
         Ok(tokens)
     }
