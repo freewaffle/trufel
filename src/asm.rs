@@ -1,4 +1,3 @@
-use std::fmt::format;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
@@ -6,6 +5,7 @@ use crate::instr::InstructionKind;
 use crate::vm::MAX_REGISTERS_COUNT;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
+const MAX_GOTO_LENGTH: u32 = 2_u32.pow(32 - 8 /* opcode */);
 
 const DEBUG: bool = true;
 
@@ -443,30 +443,161 @@ impl Assembler {
                 };
             }
 
+            macro_rules! reg3 {
+                ($kind:ident) => {{
+                    let r0: u8 = if let Some(value) = get_arg!(0, Register) {
+                        value
+                    } else {
+                        print_error!(ExpectedArgument, "expected a register index at argument #0");
+                    };
+
+                    let r1: u8 = if let Some(value) = get_arg!(1, Register) {
+                        value
+                    } else {
+                        print_error!(ExpectedArgument, "expected a register index at argument #1");
+                    };
+
+                    let r2: u8 = if let Some(value) = get_arg!(2, Register) {
+                        value
+                    } else {
+                        print_error!(ExpectedArgument, "expected a register index at argument #2");
+                    };
+
+                    Instr::$kind { r0, r1, r2 }
+                }};
+            }
+
+            macro_rules! reg2 {
+                ($kind:ident) => {{
+                    let r0: u8 = if let Some(value) = get_arg!(0, Register) {
+                        value
+                    } else {
+                        print_error!(ExpectedArgument, "expected a register index at argument #0");
+                    };
+
+                    let r1: u8 = if let Some(value) = get_arg!(1, Register) {
+                        value
+                    } else {
+                        print_error!(ExpectedArgument, "expected a register index at argument #1");
+                    };
+
+                    Instr::$kind { r0, r1 }
+                }};
+            }
+
             use TokenKind::*;
             use InstructionKind as Instr;
             match &first_token.kind {
                 Identifier(ident) => {
-                    /* let ident: &str = ident.to_lowercase().as_str();
+                    let ident: &str = ident.to_lowercase().as_str();
                     let new_instr = match ident {
                         "nop" => { Instr::Nop }
 
                         "mov" => {
-                            let r0 = if let Some(addr) = get_arg!(0, Address) {
-                                addr
+                            let r0: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
                             } else {
-                                print_error!(ExpectedArgument, "expected an address at argument #0");
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
                             };
 
-                            let r1 = if let Some(addr) = get_arg!(1, Address) {
-                                addr
+                            let r1: u8 = if let Some(value) = get_arg!(1, Register) {
+                                value
                             } else {
-                                print_error!(ExpectedArgument, "expected an address at argument #1");
+                                print_error!(ExpectedArgument, "expected a register index at argument #1");
                             };
 
-                            Instr::Mov { r0: (), r1: () }
+                            Instr::Mov { r0, r1 }
                         }
-                    }; */
+
+                        "movk" => {
+                            let reg: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            let kaddr32: u32 = if let Some(value) = get_arg!(1, Address) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a constant address at argument #1");
+                            };
+
+                            let kaddr: u16 = if let Ok(num) = kaddr32.try_into() {
+                                num
+                            } else {
+                                print_error!(MalformedNumber, "constant address out of bounds");
+                            };
+
+                            Instr::MovK { reg, kaddr }
+                        }
+
+                        "mvoid" => {
+                            let r0: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            let rn: u8 = if let Some(value) = get_arg!(1, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #1");
+                            };
+
+                            Instr::MVoid { r0, rn }
+                        }
+
+                        "test" => {
+                            let reg: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            Instr::Test { reg }
+                        }
+
+                        "goto" => {
+                            let pos: u32 = if let Some(token) = args.get(0) {
+                                match token.kind {
+                                    Identifier(label_name) => {
+                                        todo!()
+                                    }
+
+                                    Address(addr) => {
+                                        if addr < MAX_GOTO_LENGTH {
+                                            addr
+                                        } else {
+                                            print_error!(MalformedNumber, "instruction address out of bounds");
+                                        }
+                                    }
+
+                                    _ => {
+                                        print_error!(ExpectedArgument, "expected an instruction address or a label at argument #0");
+                                    }
+                                }
+                            } else {
+                                print_error!(ExpectedArgument, "expected an instruction address or a label at argument #0");
+                            };
+
+                            Instr::Goto { pos }
+                        }
+
+                        "add" => { reg3!(Add) }
+                        "sub" => { reg3!(Sub) }
+                        "mul" => { reg3!(Mul) }
+                        "div" => { reg3!(Div) }
+                        "rem" => { reg3!(Rem) }
+                        "and" => { reg3!(And) }
+                        "or"  => { reg3!(Or)  }
+                        "not" => { reg2!(Not) }
+                        "shl" => { reg3!(Shl) }
+                        "shr" => { reg3!(Shr) }
+                        "eq"  => { reg3!(Eq)  }
+                        "neq" => { reg3!(Neq) }
+                        "lt"  => { reg3!(Lt)  }
+                        "lte" => { reg3!(Lte) }
+                    };
                 }
 
                 Colon => {}
