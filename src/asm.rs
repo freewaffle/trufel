@@ -71,7 +71,8 @@ pub enum ErrorKind {
     UnexpectedTokens,
     ExpectedTokens,
     ExpectedArgument,
-    MalformedNumber
+    MalformedNumber,
+    InvalidOpcode,
 }
 
 struct Assembler {
@@ -443,7 +444,7 @@ impl Assembler {
                 };
             }
 
-            macro_rules! reg3 {
+            macro_rules! mathop3 {
                 ($kind:ident) => {{
                     let r0: u8 = if let Some(value) = get_arg!(0, Register) {
                         value
@@ -467,7 +468,7 @@ impl Assembler {
                 }};
             }
 
-            macro_rules! reg2 {
+            macro_rules! mathop2 {
                 ($kind:ident) => {{
                     let r0: u8 = if let Some(value) = get_arg!(0, Register) {
                         value
@@ -489,7 +490,9 @@ impl Assembler {
             use InstructionKind as Instr;
             match &first_token.kind {
                 Identifier(ident) => {
-                    let ident: &str = ident.to_lowercase().as_str();
+                    let ident = ident.to_lowercase();
+                    let ident: &str = ident.as_str();
+
                     let new_instr = match ident {
                         "nop" => { Instr::Nop }
 
@@ -547,6 +550,21 @@ impl Assembler {
                             Instr::MVoid { r0, rn }
                         }
 
+                        "add" => { mathop3!(Add) }
+                        "sub" => { mathop3!(Sub) }
+                        "mul" => { mathop3!(Mul) }
+                        "div" => { mathop3!(Div) }
+                        "rem" => { mathop3!(Rem) }
+                        "and" => { mathop3!(And) }
+                        "or"  => { mathop3!(Or)  }
+                        "not" => { mathop2!(Not) }
+                        "shl" => { mathop3!(Shl) }
+                        "shr" => { mathop3!(Shr) }
+                        "eq"  => { mathop3!(Eq)  }
+                        "neq" => { mathop3!(Neq) }
+                        "lt"  => { mathop3!(Lt)  }
+                        "lte" => { mathop3!(Lte) }
+
                         "test" => {
                             let reg: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
@@ -558,7 +576,7 @@ impl Assembler {
                         }
 
                         "goto" => {
-                            let pos: u32 = if let Some(token) = args.get(0) {
+                            /* let pos: u32 = if let Some(token) = args.get(0) {
                                 match token.kind {
                                     Identifier(label_name) => {
                                         todo!()
@@ -578,25 +596,172 @@ impl Assembler {
                                 }
                             } else {
                                 print_error!(ExpectedArgument, "expected an instruction address or a label at argument #0");
+                            }; */
+
+                            let pos: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
                             };
 
                             Instr::Goto { pos }
                         }
 
-                        "add" => { reg3!(Add) }
-                        "sub" => { reg3!(Sub) }
-                        "mul" => { reg3!(Mul) }
-                        "div" => { reg3!(Div) }
-                        "rem" => { reg3!(Rem) }
-                        "and" => { reg3!(And) }
-                        "or"  => { reg3!(Or)  }
-                        "not" => { reg2!(Not) }
-                        "shl" => { reg3!(Shl) }
-                        "shr" => { reg3!(Shr) }
-                        "eq"  => { reg3!(Eq)  }
-                        "neq" => { reg3!(Neq) }
-                        "lt"  => { reg3!(Lt)  }
-                        "lte" => { reg3!(Lte) }
+                        "call" => {
+                            let retr: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            let pos: u8 = if let Some(value) = get_arg!(1, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #1");
+                            };
+
+                            let argr: u8 = if let Some(value) = get_arg!(2, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #2");
+                            };
+
+                            Instr::Call { retr, pos, argr }
+                        }
+
+                        "newcont" => {
+                            let reg: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            Instr::NewCont { reg }
+                        }
+
+                        "getcont" => {
+                            let reg: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            let cont: u8 = if let Some(value) = get_arg!(1, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #1");
+                            };
+
+                            let pos: u8 = if let Some(value) = get_arg!(2, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #2");
+                            };
+
+                            Instr::GetCont { reg, cont, pos }
+                        }
+
+                        "setcont" | "updcont" => {
+                            let cont: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            let pos: u8 = if let Some(value) = get_arg!(1, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #1");
+                            };
+
+                            let value: u8 = if let Some(value) = get_arg!(2, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #2");
+                            };
+
+                            if ident == "setcont" {
+                                Instr::SetCont { cont, pos, value }
+                            } else {
+                                Instr::UpdCont { cont, pos, value }
+                            }
+                        }
+
+                        "delcont" => {
+                            let cont: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            let pos: u8 = if let Some(value) = get_arg!(1, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #1");
+                            };
+
+                            Instr::DelCont { cont, pos }
+                        }
+
+                        "dropcont" => {
+                            let cont: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            Instr::DropCont { cont }
+                        }
+
+                        "int" => {
+                            let port: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            let msg: u8 = if let Some(value) = get_arg!(1, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #1");
+                            };
+
+                            Instr::Int { port, msg }
+                        }
+
+                        "retv" => Instr::RetV,
+
+                        "retk" => {
+                            let kaddr32: u32 = if let Some(value) = get_arg!(0, Address) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a constant address at argument #1");
+                            };
+
+                            let kaddr: u16 = if let Ok(num) = kaddr32.try_into() {
+                                num
+                            } else {
+                                print_error!(MalformedNumber, "constant address out of bounds");
+                            };
+
+                            Instr::RetK { kaddr }
+                        }
+
+                        "ret" => {
+                            let reg: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            Instr::Ret { reg }
+                        }
+
+                        "halt" => Instr::Halt,
+
+                        _ => {
+                            print_error!(InvalidOpcode, "invalid opcode");
+                        }
                     };
                 }
 
