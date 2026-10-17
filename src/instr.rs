@@ -75,5 +75,12 @@ pub enum InstructionKind {
 
     Int { port: u8, msg: u8 },
 
+    /// returns void
+    RetV,
+    /// returns contents of constant `kaddr`
+    RetK { kaddr: u16 },
+    /// returns contents of register `reg`
+    Ret { reg: u8 },
+
     Halt,
 }
