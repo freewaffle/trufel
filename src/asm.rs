@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
@@ -391,6 +392,8 @@ impl Assembler {
     pub fn generate_instructions(&self, file: File) -> Result<Vec<Instruction>, ErrorKind> {
         let mut code: Vec<Instruction> = Vec::new();
 
+        let mut macros: HashMap<String, TokenKind> = HashMap::new();
+
         let reader = BufReader::new(file);
         let input_lines = reader.lines().map(|line| line.unwrap());
 
@@ -403,7 +406,25 @@ impl Assembler {
                 }};
             }
 
-            let tokens: Vec<Token> = self.generate_tokens(line, line_number)?;
+            let generated_tokens: Vec<Token> = self.generate_tokens(line, line_number)?;
+
+            let mut unmacrofied_tokens: Vec<Token> = Vec::new();
+
+            for gtoken in generated_tokens {
+                let token = if let TokenKind::Identifier(ident) = &gtoken.kind
+                && let Some(mtk) = macros.get(ident) {
+                    Token {
+                        kind: mtk.clone(),
+                        // other_field: gtoken.other_field
+                    }
+                } else {
+                    gtoken
+                };
+
+                unmacrofied_tokens.push(token);
+            }
+
+            let tokens: Vec<Token> = unmacrofied_tokens;
 
             let first_token = if let Some(tok) = tokens.first() {
                 tok
