@@ -492,7 +492,7 @@ impl Assembler {
                         }};
                     }
 
-                    let new_instr = match ident {
+                    let kind = match ident {
                         "nop" => { Instr::Nop }
 
                         "mov" => {
@@ -779,7 +779,11 @@ impl Assembler {
                         }
                     };
 
-                    // ...
+                    // additional checks?
+
+                    let instr = Instruction { kind };
+
+                    code.push(instr);
                 }
 
                 Colon => {}
