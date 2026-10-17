@@ -1,3 +1,5 @@
+// REMOVE THIS LINT IN FUTURE:
+#[allow(dead_code)]
 #[derive(Debug)]
 #[repr(u8)]
 pub enum InstructionKind {
