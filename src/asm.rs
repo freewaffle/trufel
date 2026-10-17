@@ -5,7 +5,6 @@ use crate::instr::InstructionKind;
 use crate::vm::MAX_REGISTERS_COUNT;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
-const MAX_GOTO_LENGTH: u32 = 2_u32.pow(32 - 8 /* opcode */);
 
 const DEBUG: bool = true;
 
@@ -421,7 +420,7 @@ impl Assembler {
                         args.push(slice[0].clone());
                     } else {
                         // mov $0 $1, $2
-                        //        ^^ error
+                        //       ^^^ error
                         print_error!(
                             UnexpectedTokens,
                             "multiple tokens in an argument. did you forget inserting a comma?"
@@ -430,68 +429,68 @@ impl Assembler {
                 }
             }
 
-            macro_rules! get_arg {
-                ($pos:expr, $tok_kind:ident) => {
-                    match args.get($pos) {
-                        Some(tok) => if let TokenKind::$tok_kind(value) = tok.kind {
-                            Some(value)
-                        } else {
-                            None
-                        },
-
-                        None => None
-                    }
-                };
-            }
-
-            macro_rules! mathop3 {
-                ($kind:ident) => {{
-                    let r0: u8 = if let Some(value) = get_arg!(0, Register) {
-                        value
-                    } else {
-                        print_error!(ExpectedArgument, "expected a register index at argument #0");
-                    };
-
-                    let r1: u8 = if let Some(value) = get_arg!(1, Register) {
-                        value
-                    } else {
-                        print_error!(ExpectedArgument, "expected a register index at argument #1");
-                    };
-
-                    let r2: u8 = if let Some(value) = get_arg!(2, Register) {
-                        value
-                    } else {
-                        print_error!(ExpectedArgument, "expected a register index at argument #2");
-                    };
-
-                    Instr::$kind { r0, r1, r2 }
-                }};
-            }
-
-            macro_rules! mathop2 {
-                ($kind:ident) => {{
-                    let r0: u8 = if let Some(value) = get_arg!(0, Register) {
-                        value
-                    } else {
-                        print_error!(ExpectedArgument, "expected a register index at argument #0");
-                    };
-
-                    let r1: u8 = if let Some(value) = get_arg!(1, Register) {
-                        value
-                    } else {
-                        print_error!(ExpectedArgument, "expected a register index at argument #1");
-                    };
-
-                    Instr::$kind { r0, r1 }
-                }};
-            }
-
             use TokenKind::*;
             use InstructionKind as Instr;
             match &first_token.kind {
                 Identifier(ident) => {
                     let ident = ident.to_lowercase();
                     let ident: &str = ident.as_str();
+
+                    macro_rules! get_arg {
+                        ($pos:expr, $tok_kind:ident) => {
+                            match args.get($pos) {
+                                Some(tok) => if let TokenKind::$tok_kind(value) = tok.kind {
+                                    Some(value)
+                                } else {
+                                    None
+                                },
+
+                                None => None
+                            }
+                        };
+                    }
+
+                    macro_rules! mathop3 {
+                        ($kind:ident) => {{
+                            let r0: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            let r1: u8 = if let Some(value) = get_arg!(1, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #1");
+                            };
+
+                            let r2: u8 = if let Some(value) = get_arg!(2, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #2");
+                            };
+
+                            Instr::$kind { r0, r1, r2 }
+                        }};
+                    }
+
+                    macro_rules! mathop2 {
+                        ($kind:ident) => {{
+                            let r0: u8 = if let Some(value) = get_arg!(0, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #0");
+                            };
+
+                            let r1: u8 = if let Some(value) = get_arg!(1, Register) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a register index at argument #1");
+                            };
+
+                            Instr::$kind { r0, r1 }
+                        }};
+                    }
 
                     let new_instr = match ident {
                         "nop" => { Instr::Nop }
@@ -605,6 +604,22 @@ impl Assembler {
                             };
 
                             Instr::Goto { pos }
+                        }
+
+                        "gotok" => {
+                            let kaddr32: u32 = if let Some(value) = get_arg!(0, Address) {
+                                value
+                            } else {
+                                print_error!(ExpectedArgument, "expected a constant address at argument #1");
+                            };
+
+                            let kaddr: u16 = if let Ok(num) = kaddr32.try_into() {
+                                num
+                            } else {
+                                print_error!(MalformedNumber, "constant address out of bounds");
+                            };
+
+                            Instr::GotoK { kaddr }
                         }
 
                         "call" => {
@@ -763,6 +778,8 @@ impl Assembler {
                             print_error!(InvalidOpcode, "invalid opcode");
                         }
                     };
+
+                    // ...
                 }
 
                 Colon => {}

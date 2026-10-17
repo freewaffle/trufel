@@ -51,6 +51,8 @@ pub enum InstructionKind {
     Test { reg: u8 },
     /// `pc = r(pos)`
     Goto { pos: u8 },
+    /// `pc = k(kaddr)`
+    GotoK { kaddr: u16 },
     /// `pc = r(pos)`
     /// 
     /// `r0 = argr`; `r1 = argr+1`
