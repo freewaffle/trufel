@@ -1,13 +1,11 @@
-// remove this lint in the future!!!!!!
-#[allow(dead_code)]
 #[derive(Debug)]
 #[repr(u8)]
 pub enum InstructionKind {
-    // - `r` = register
-    // - `k` = constant
-    // - `c` = container
-    // - `sp` = sprite slot
+    // `r` = register
+    // `k` = constant
+    // `c` = container
 
+    // no op
     Nop,
 
     /// `r(r0) = r(r1)`
@@ -69,8 +67,10 @@ pub enum InstructionKind {
     /// same as `SetCont`, but panics if field `pos`
     /// wasn't set before.
     UpdCont { cont: u8, pos: u8, value: u8 },
-    /// deletes field `c(cont)[r(pos)]`
+    /// deletes field `c(cont)[r(pos)]` (different from
+    /// assigning `void` to it)
     DelCont { cont: u8, pos: u8 },
+    /// destroys container `cont`
     DropCont { cont: u8 },
 
     Int { port: u8, msg: u8 },
@@ -82,5 +82,6 @@ pub enum InstructionKind {
     /// returns contents of register `reg`
     Ret { reg: u8 },
 
+    /// stops the program and closes VM
     Halt,
 }
