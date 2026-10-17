@@ -75,17 +75,5 @@ pub enum InstructionKind {
 
     Int { port: u8, msg: u8 },
 
-    /*
-        NewSpr { slot: u8, xsize: u8, ysize: u8 },
-        /// `sp(slot)[r(pos)] = r(value)`
-        SetSpr { slot: u8, pos: u8, value: u8},
-
-        /// if got a new event: `r(reg) = event_container`
-        /// 
-        /// else: `r(reg) = void`
-        NextEvt { reg: u8 },
-    */
-    
-    Ret,
     Halt,
 }
