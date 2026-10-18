@@ -1,49 +1,51 @@
-newcont r0
-
-
-# msg[0] = GPU_TOGGLEBACKBUF
-    movk r1, 0  # index
-    movk r2, GPU_TOGGLEBACKBUF
-    setcont r0, r1, r2
-
-# msg[1] = 1  # enabled
-    movk r1, 1  # index
-    movk r2, 1
-    setcont r0, r1, r2
-
-# sending message
-    movk r1, GPU
-    int r1, r0
-
-
-# msg[0] = GPU_SETPIXEL
-    movk r1, 0  # index
-    movk r2, GPU_SETPIXEL
-    setcont r0, r1, r2
-
-# msg[1] = 6  # X
-    movk r1, 1  # index
-    movk r2, 6
-    setcont r0, r1, r2
-
-# msg[2] = 6  # Y
-    movk r1, 2  # index
-    movk r2, 6
-    setcont r0, r1, r2
-
-# msg[3] = 8  # orange color
-    movk r1, 3  # index
-    movk r2, 8
-    setcont r0, r1, r2
-
-# sending message
-    movk r1, GPU
-    int r1, r0
-
 :upd
     # msg[0] = GPU_UPDSCR
         movk r1, 0  # index
         movk r2, GPU_UPDSCR
+        setcont r0, r1, r2
+
+    # sending message
+        movk r1, GPU
+        int r1, r0
+
+    gotok upd
+
+:main
+    newcont r0
+
+    # msg[0] = GPU_TOGGLEBACKBUF
+        movk r1, 0  # index
+        movk r2, GPU_TOGGLEBACKBUF
+        setcont r0, r1, r2
+
+    # msg[1] = 1  # enabled
+        movk r1, 1  # index
+        movk r2, 1
+        setcont r0, r1, r2
+
+    # sending message
+        movk r1, GPU
+        int r1, r0
+
+
+    # msg[0] = GPU_SETPIXEL
+        movk r1, 0  # index
+        movk r2, GPU_SETPIXEL
+        setcont r0, r1, r2
+
+    # msg[1] = 6  # X
+        movk r1, 1  # index
+        movk r2, 6
+        setcont r0, r1, r2
+
+    # msg[2] = 6  # Y
+        movk r1, 2  # index
+        movk r2, 6
+        setcont r0, r1, r2
+
+    # msg[3] = 8  # orange color
+        movk r1, 3  # index
+        movk r2, 8
         setcont r0, r1, r2
 
     # sending message
