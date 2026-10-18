@@ -82,6 +82,7 @@ pub enum ErrorKind {
     ReachedCodeLengthLimit,
     LabelRedefinition,
     MacroRedefinition,
+    FullConstantPool
 }
 
 struct Assembler {
@@ -448,7 +449,67 @@ impl Assembler {
                 unmacrofied_tokens.push(token);
             }
 
-            let tokens: Vec<Token> = unmacrofied_tokens;
+            let mut unconsted_tokens: Vec<Token> = Vec::new();
+
+            // `otoken` stands for "original token"
+            for otoken in unmacrofied_tokens {
+                use TokenKind::*;
+                let kind = match otoken.kind {
+                    Number(num) => {
+                        let mut kaddr: Option<u32> = None;
+
+                        for (kpos, kval) in constants.iter().enumerate() {
+                            if let KValue::Number(knum) = kval && *knum == num {
+                                kaddr = Some(kpos as u32);
+                            }
+                        }
+
+                        if kaddr.is_none() {
+                            let len: u32 = constants.len() as u32;
+
+                            if len >= 2u32.pow(16) {
+                                print_error!(FullConstantPool, "constant pool is full");
+                            }
+
+                            kaddr = Some(len);
+                            constants.push(KValue::Number(num));
+                        }
+
+                        Address(kaddr.unwrap())
+                    }
+
+                    String(string) => {
+                        let mut kaddr: Option<u32> = None;
+
+                        for (kpos, kval) in constants.iter().enumerate() {
+                            if let KValue::String(kstr) = kval && *kstr == string {
+                                kaddr = Some(kpos as u32);
+                            }
+                        }
+
+                        if kaddr.is_none() {
+                            let len: u32 = constants.len() as u32;
+
+                            if len >= 2u32.pow(16) {
+                                print_error!(FullConstantPool, "constant pool is full");
+                            }
+
+                            kaddr = Some(len);
+                            constants.push(KValue::String(string));
+                        }
+
+                        Address(kaddr.unwrap())
+                    }
+
+                    _ => otoken.kind
+                };
+
+                let token = Token { kind };
+
+                unconsted_tokens.push(token);
+            }
+
+            let tokens: Vec<Token> = unconsted_tokens;
 
             let first_token = if let Some(tok) = tokens.first() {
                 tok
