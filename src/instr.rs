@@ -47,7 +47,7 @@ pub enum InstructionKind {
     /// `r(r0) = r(r1) <= r(r2)`
     Lte { r0: u8, r1: u8, r2: u8 },
     
-    /// if `reg > 0`: `pc += 1`
+    /// if `r(reg) > 0`: `pc += 1`
     Test { reg: u8 },
     /// `pc = r(pos)`
     Goto { pos: u8 },
@@ -60,7 +60,7 @@ pub enum InstructionKind {
     /// `r(retr) = ret`
     Call { retr: u8, pos: u8, argr: u8 },
 
-    /// `r(reg) = newcont(size)`
+    /// `r(reg) = newcont(r(reg))`
     NewCont { reg: u8 },
     /// `r(reg) = c(r(cont))[r(pos)]`
     GetCont { reg: u8, cont: u8, pos: u8 },
