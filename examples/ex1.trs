@@ -10,7 +10,7 @@
 
     gotok upd
 
-:main
+:boot
     newcont r0
 
     # msg[0] = GPU_TOGGLEBACKBUF
