@@ -60,6 +60,12 @@ struct Token {
     pub kind: TokenKind,
 }
 
+enum KValue {
+    Number(f32),
+    Address(u32),
+    String(String)
+}
+
 #[derive(Debug)]
 #[repr(u8)]
 pub enum ErrorKind {
@@ -73,6 +79,9 @@ pub enum ErrorKind {
     ExpectedArgument,
     MalformedNumber,
     InvalidOpcode,
+    ReachedCodeLengthLimit,
+    LabelRedefinition,
+    MacroRedefinition,
 }
 
 struct Assembler {
@@ -391,11 +400,26 @@ impl Assembler {
 
     pub fn generate_instructions(&self, file: File) -> Result<Vec<Instruction>, ErrorKind> {
         let mut code: Vec<Instruction> = Vec::new();
+        let mut code_length: u32 = 0;
+        let mut labels: Vec<String> = Vec::new();
+        let mut boot_start_pos: u32 = 0;
+
+        let mut constants: Vec<KValue> = Vec::new();
 
         let mut macros: HashMap<String, TokenKind> = HashMap::new();
 
         let reader = BufReader::new(file);
         let input_lines = reader.lines().map(|line| line.unwrap());
+
+        /*
+            чаще всего исходные файлы в начале будут содержать не boot,
+            а всякие другие функции. их опкоды будут лежать в начале кода,
+            и они не должны выполняться. нужно при запуске отправлять ВМ
+            сразу в boot. с этой целью мы добавляем в код gotok с адресом boot.
+            если boot окажется в начале кода, то gotok просто заменяется на nop.
+        */
+        code.push(Instruction { kind: InstructionKind::GotoK { kaddr: 0 } });
+        code_length += 1;
 
         for (line_number, line) in (1u32..).zip(input_lines) {
             macro_rules! print_error {
@@ -805,9 +829,34 @@ impl Assembler {
                     let instr = Instruction { kind };
 
                     code.push(instr);
+                    if let Some(len) = code_length.checked_add(1) {
+                        code_length = len;
+                    } else {
+                        print_error!(ReachedCodeLengthLimit, "reached code length limit (2**32 max instructions)");
+                    }
                 }
 
-                Colon => {}
+                Colon => {
+                    let name = if let Some(token) = tokens.get(1)
+                    && let Identifier(ident) = &token.kind {
+                        ident.clone()
+                    } else {
+                        print_error!(UnexpectedTokens, "expected an identifier after colon");
+                    };
+
+                    if labels.contains(&name) {
+                        print_error!(LabelRedefinition, "duplicate label");
+                    } else if macros.contains_key(&name) {
+                        print_error!(MacroRedefinition, "this label redefines macro of the same name");
+                    } else {
+                        if name == "boot" {
+                            boot_start_pos = code_length;
+                        }
+
+                        macros.insert(name.clone(), Address(code_length));
+                        labels.push(name);
+                    }
+                }
 
                 _ => {
                     print_error!(UnexpectedTokens, "expected an identifier or a colon");
