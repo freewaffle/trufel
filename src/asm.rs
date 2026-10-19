@@ -412,6 +412,44 @@ impl Assembler {
         let reader = BufReader::new(file);
         let input_lines = reader.lines().map(|line| line.unwrap());
 
+        macro_rules! get_or_add_constant {
+            ($val:expr, $kind:ident) => {{
+                // итоговый адрес константы
+                let mut kaddr: Option<u32> = None;
+
+                // пробегаемся по всем существующим константам.
+                for (kpos, kval) in constants.iter().enumerate() {
+                    // если текущая константа соответствует типу и значением...
+                    if let KValue::$kind(kval) = kval && *kval == $val {
+                        // ...сохраняем адрес этой константы.
+                        kaddr = Some(kpos as u32);
+                    }
+                }
+
+                // если нет требуемого значения из пула констант, создаём новую.
+                if kaddr.is_none() {
+                    // если первая метка не `boot`, создаём константу для
+                    // прыжка в `boot`.
+                    if constants.is_empty() && labels.first().unwrap() != "boot" {
+                        constants.push(KValue::Address(0));
+                    }
+
+                    // длина пула будет служить адресом новой константы.
+                    let len: u32 = constants.len() as u32;
+
+                    // проверяем на переполнение в 16-битном адресном режиме.
+                    if len >= 2u32.pow(16) {
+                        print_error!(FullConstantPool, "constant pool is full");
+                    }
+
+                    constants.push(KValue::$kind($val));
+                    kaddr = Some(len);
+                }
+
+                kaddr.unwrap()
+            }};
+        }
+
         /*
             чаще всего исходные файлы в начале будут содержать не boot,
             а всякие другие функции. их опкоды будут лежать в начале кода,
@@ -456,49 +494,13 @@ impl Assembler {
                 use TokenKind::*;
                 let kind = match otoken.kind {
                     Number(num) => {
-                        let mut kaddr: Option<u32> = None;
-
-                        for (kpos, kval) in constants.iter().enumerate() {
-                            if let KValue::Number(knum) = kval && *knum == num {
-                                kaddr = Some(kpos as u32);
-                            }
-                        }
-
-                        if kaddr.is_none() {
-                            let len: u32 = constants.len() as u32;
-
-                            if len >= 2u32.pow(16) {
-                                print_error!(FullConstantPool, "constant pool is full");
-                            }
-
-                            kaddr = Some(len);
-                            constants.push(KValue::Number(num));
-                        }
-
-                        Address(kaddr.unwrap())
+                        let kaddr: u32 = get_or_add_constant!(num, Number);
+                        Address(kaddr)
                     }
 
                     String(string) => {
-                        let mut kaddr: Option<u32> = None;
-
-                        for (kpos, kval) in constants.iter().enumerate() {
-                            if let KValue::String(kstr) = kval && *kstr == string {
-                                kaddr = Some(kpos as u32);
-                            }
-                        }
-
-                        if kaddr.is_none() {
-                            let len: u32 = constants.len() as u32;
-
-                            if len >= 2u32.pow(16) {
-                                print_error!(FullConstantPool, "constant pool is full");
-                            }
-
-                            kaddr = Some(len);
-                            constants.push(KValue::String(string));
-                        }
-
-                        Address(kaddr.unwrap())
+                        let kaddr: u32 = get_or_add_constant!(string, String);
+                        Address(kaddr)
                     }
 
                     _ => otoken.kind
