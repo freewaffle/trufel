@@ -82,7 +82,8 @@ pub enum ErrorKind {
     ReachedCodeLengthLimit,
     LabelRedefinition,
     MacroRedefinition,
-    FullConstantPool
+    FullConstantPool,
+    InstructionBeforeLabel
 }
 
 struct Assembler {
@@ -403,7 +404,7 @@ impl Assembler {
         let mut code: Vec<Instruction> = Vec::new();
         let mut code_length: u32 = 0;
         let mut labels: Vec<String> = Vec::new();
-        let mut boot_start_pos: u32 = 0;
+        let mut boot_start_pos: Option<u32> = None;
 
         let mut constants: Vec<KValue> = Vec::new();
 
@@ -423,6 +424,7 @@ impl Assembler {
                     if let KValue::$kind(kval) = kval && *kval == $val {
                         // ...сохраняем адрес этой константы.
                         kaddr = Some(kpos as u32);
+                        break;
                     }
                 }
 
@@ -887,9 +889,13 @@ impl Assembler {
                         }
                     };
 
-                    // additional checks?
+                    // additional instruction checks?
 
                     let instr = Instruction { kind };
+
+                    if labels.is_empty() {
+                        print_error!(InstructionBeforeLabel, "a label must be declared before any instructions");
+                    }
 
                     code.push(instr);
                     if let Some(len) = code_length.checked_add(1) {
@@ -913,7 +919,7 @@ impl Assembler {
                         print_error!(MacroRedefinition, "this label redefines macro of the same name");
                     } else {
                         if name == "boot" {
-                            boot_start_pos = code_length;
+                            boot_start_pos = Some(code_length);
                         }
 
                         macros.insert(name.clone(), Address(code_length));
@@ -924,6 +930,14 @@ impl Assembler {
                 _ => {
                     print_error!(UnexpectedTokens, "expected an identifier or a colon");
                 }
+            }
+        }
+
+        if labels[0] == "boot" {
+            code[0].kind = InstructionKind::Nop;
+        } else {
+            if let Some(boot_pos) = boot_start_pos {
+                constants[0] = KValue::Address(boot_pos);
             }
         }
 
