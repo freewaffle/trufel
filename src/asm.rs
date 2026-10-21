@@ -916,7 +916,7 @@ impl Assembler {
                     if labels.contains(&name) {
                         print_error!(LabelRedefinition, "duplicate label");
                     } else if macros.contains_key(&name) {
-                        print_error!(MacroRedefinition, "this label redefines macro of the same name");
+                        print_error!(MacroRedefinition, "a macro exists with the same name");
                     } else {
                         if name == "boot" {
                             boot_start_pos = Some(code_length);
