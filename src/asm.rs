@@ -505,6 +505,11 @@ impl Assembler {
                         Address(kaddr)
                     }
 
+                    Address(addr) => {
+                        let kaddr: u32 = get_or_add_constant!(addr, Address);
+                        Address(kaddr)
+                    }
+
                     _ => otoken.kind
                 };
 
