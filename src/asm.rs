@@ -400,18 +400,21 @@ impl Assembler {
         Ok(tokens)
     }
 
-    pub fn generate_instructions(&self, file: File) -> Result<Vec<Instruction>, ErrorKind> {
-        let mut code: Vec<Instruction> = Vec::new();
-        let mut code_length: u32 = 0;
-        let mut labels: Vec<String> = Vec::new();
-        let mut boot_start_pos: Option<u32> = None;
+    pub fn unwrap_constants(
+        &self,
+        constants: &mut Vec<KValue>,
+        tokens: Vec<Token>,
+        line_number: u32
+    ) -> Result<Vec<Token>, ErrorKind> {
+        macro_rules! print_error {
+            ($err_kind:ident, $msg:expr) => {{
+                eprintln!("{}: line {}:", self.filename, line_number);
+                eprintln!("  error: {}", $msg);
+                return Err(ErrorKind::$err_kind);
+            }};
+        }
 
-        let mut constants: Vec<KValue> = Vec::new();
-
-        let mut macros: HashMap<String, TokenKind> = HashMap::new();
-
-        let reader = BufReader::new(file);
-        let input_lines = reader.lines().map(|line| line.unwrap());
+        let mut final_tokens: Vec<Token> = Vec::new();
 
         macro_rules! get_or_add_constant {
             ($val:expr, $kind:ident) => {{
@@ -432,9 +435,9 @@ impl Assembler {
                 if kaddr.is_none() {
                     // если первая метка не `boot`, создаём константу для
                     // прыжка в `boot`.
-                    if constants.is_empty() && labels.first().unwrap() != "boot" {
+                    /* if constants.is_empty() && labels.first().unwrap() != "boot" {
                         constants.push(KValue::Address(0));
-                    }
+                    } */
 
                     // длина пула будет служить адресом новой константы.
                     let len: u32 = constants.len() as u32;
@@ -451,6 +454,48 @@ impl Assembler {
                 kaddr.unwrap()
             }};
         }
+
+        for token in tokens {
+            use TokenKind::*;
+            let kind = match token.kind {
+                Number(num) => {
+                    let kaddr: u32 = get_or_add_constant!(num, Number);
+                    Address(kaddr)
+                }
+
+                String(string) => {
+                    let kaddr: u32 = get_or_add_constant!(string, String);
+                    Address(kaddr)
+                }
+
+                Address(addr) => {
+                    let kaddr: u32 = get_or_add_constant!(addr, Address);
+                    Address(kaddr)
+                }
+
+                _ => token.kind
+            };
+
+            let new_token = Token { kind };
+
+            final_tokens.push(new_token);
+        }
+
+        Ok(final_tokens)
+    }
+
+    pub fn generate_instructions(&self, file: File) -> Result<Vec<Instruction>, ErrorKind> {
+        let mut code: Vec<Instruction> = Vec::new();
+        let mut code_length: u32 = 0;
+        let mut labels: Vec<String> = Vec::new();
+        let mut boot_start_pos: Option<u32> = None;
+
+        let mut constants: Vec<KValue> = Vec::new();
+
+        let mut macros: HashMap<String, TokenKind> = HashMap::new();
+
+        let reader = BufReader::new(file);
+        let input_lines = reader.lines().map(|line| line.unwrap());
 
         /*
             чаще всего исходные файлы в начале будут содержать не boot,
@@ -489,7 +534,7 @@ impl Assembler {
                 unmacrofied_tokens.push(token);
             }
 
-            let mut unconsted_tokens: Vec<Token> = Vec::new();
+            /* let mut unconsted_tokens: Vec<Token> = Vec::new();
 
             // `otoken` stands for "original token"
             for otoken in unmacrofied_tokens {
@@ -516,9 +561,9 @@ impl Assembler {
                 let token = Token { kind };
 
                 unconsted_tokens.push(token);
-            }
+            } */
 
-            let tokens: Vec<Token> = unconsted_tokens;
+            let tokens: Vec<Token> = self.unwrap_constants(&mut constants, unmacrofied_tokens, line_number)?;
 
             let first_token = if let Some(tok) = tokens.first() {
                 tok
@@ -547,7 +592,12 @@ impl Assembler {
             use TokenKind::*;
             use InstructionKind as Instr;
             match &first_token.kind {
+                // INSTRUCTIONS ONLY!!
                 Identifier(ident) => {
+                    if labels.is_empty() {
+                        print_error!(InstructionBeforeLabel, "a label must be declared before any instructions");
+                    }
+
                     let ident = ident.to_lowercase();
                     let ident: &str = ident.as_str();
 
@@ -898,10 +948,6 @@ impl Assembler {
 
                     let instr = Instruction { kind };
 
-                    if labels.is_empty() {
-                        print_error!(InstructionBeforeLabel, "a label must be declared before any instructions");
-                    }
-
                     code.push(instr);
                     if let Some(len) = code_length.checked_add(1) {
                         code_length = len;
@@ -925,6 +971,9 @@ impl Assembler {
                     } else {
                         if name == "boot" {
                             boot_start_pos = Some(code_length);
+                        } else if labels.is_empty() {
+                            assert!(constants.is_empty());
+                            constants.push(KValue::Address(0));
                         }
 
                         macros.insert(name.clone(), Address(code_length));
