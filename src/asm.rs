@@ -66,6 +66,12 @@ enum KValue {
     String(String)
 }
 
+struct Class {
+    pub code: Vec<Instruction>,
+    pub boot_start: u32,
+    pub constants: Vec<KValue>
+}
+
 #[derive(Debug)]
 #[repr(u8)]
 pub enum ErrorKind {
@@ -83,7 +89,8 @@ pub enum ErrorKind {
     LabelRedefinition,
     MacroRedefinition,
     FullConstantPool,
-    InstructionBeforeLabel
+    InstructionBeforeLabel,
+    BootNotFound
 }
 
 struct Assembler {
@@ -433,12 +440,6 @@ impl Assembler {
 
                 // если нет требуемого значения из пула констант, создаём новую.
                 if kaddr.is_none() {
-                    // если первая метка не `boot`, создаём константу для
-                    // прыжка в `boot`.
-                    /* if constants.is_empty() && labels.first().unwrap() != "boot" {
-                        constants.push(KValue::Address(0));
-                    } */
-
                     // длина пула будет служить адресом новой константы.
                     let len: u32 = constants.len() as u32;
 
@@ -484,11 +485,19 @@ impl Assembler {
         Ok(final_tokens)
     }
 
-    pub fn generate_instructions(&self, file: File) -> Result<Vec<Instruction>, ErrorKind> {
+    pub fn make_class_from_file(&self, file: File) -> Result<Class, ErrorKind> {
+        macro_rules! print_error {
+                ($err_kind:ident, $msg:expr) => {{
+                    eprintln!("{}:", self.filename);
+                    eprintln!("  error: {}", $msg);
+                    return Err(ErrorKind::$err_kind);
+                }};
+            }
+        
         let mut code: Vec<Instruction> = Vec::new();
         let mut code_length: u32 = 0;
         let mut labels: Vec<String> = Vec::new();
-        let mut boot_start_pos: Option<u32> = None;
+        let mut boot_start: Option<u32> = None;
 
         let mut constants: Vec<KValue> = Vec::new();
 
@@ -970,10 +979,7 @@ impl Assembler {
                         print_error!(MacroRedefinition, "a macro exists with the same name");
                     } else {
                         if name == "boot" {
-                            boot_start_pos = Some(code_length);
-                        } else if labels.is_empty() {
-                            assert!(constants.is_empty());
-                            constants.push(KValue::Address(0));
+                            boot_start = Some(code_length);
                         }
 
                         macros.insert(name.clone(), Address(code_length));
@@ -987,27 +993,27 @@ impl Assembler {
             }
         }
 
-        if labels[0] == "boot" {
-            code[0].kind = InstructionKind::Nop;
+        let boot_start: u32 = if let Some(pos) = boot_start {
+            pos
         } else {
-            if let Some(boot_pos) = boot_start_pos {
-                constants[0] = KValue::Address(boot_pos);
-            }
-        }
+            print_error!(BootNotFound, "`boot` label not found");
+        };
 
-        Ok(code)
+        let class = Class { code, boot_start, constants };
+
+        Ok(class)
     }
 }
 
 pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorKind> {
     let assembler = Assembler::new(filename);
 
-    let instrs = assembler.generate_instructions(file)?;
+    let class = assembler.make_class_from_file(file)?;
 
     if DEBUG {
         println!("--------- INSTRUCTIONS ---------");
 
-        for (index, instr) in instrs.iter().enumerate() {
+        for (index, instr) in class.code.iter().enumerate() {
             println!("[{}] {:#?}", index, instr.kind);
         }
 
