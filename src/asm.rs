@@ -506,16 +506,6 @@ impl Assembler {
         let reader = BufReader::new(file);
         let input_lines = reader.lines().map(|line| line.unwrap());
 
-        /*
-            чаще всего исходные файлы в начале будут содержать не boot,
-            а всякие другие функции. их опкоды будут лежать в начале кода,
-            и они не должны выполняться. нужно при запуске отправлять ВМ
-            сразу в boot. с этой целью мы добавляем в код gotok с адресом boot.
-            если boot окажется в начале кода, то gotok просто заменяется на nop.
-        */
-        code.push(Instruction { kind: InstructionKind::GotoK { kaddr: 0 } });
-        code_length += 1;
-
         for (line_number, line) in (1u32..).zip(input_lines) {
             macro_rules! print_error {
                 ($err_kind:ident, $msg:expr) => {{
