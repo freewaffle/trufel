@@ -13,9 +13,9 @@
 :boot
     newcont r0
 
-    # msg[0] = GPU_TOGGLEBACKBUF
+    # msg[0] = GPU_SETBACKBUF
         movk r1, 0  # index
-        movk r2, GPU_TOGGLEBACKBUF
+        movk r2, GPU_SETBACKBUF
         setcont r0, r1, r2
 
     # msg[1] = 1  # enabled
