@@ -1,32 +1,8 @@
-:upd
-    # msg[0] = BETA_UPDSCR
-        movk r1, 0  # index
-        movk r2, BETA_UPDSCR
-        setcont r0, r1, r2
-
-    # sending message
-        movk r1, BETA
-        int r1, r0
-
-    gotok upd
+:dead_loop
+    gotok dead_loop
 
 :boot
     newcont r0
-
-    # msg[0] = BETA_SETBACKBUF
-        movk r1, 0  # index
-        movk r2, BETA_SETBACKBUF
-        setcont r0, r1, r2
-
-    # msg[1] = 1  # enabled
-        movk r1, 1  # index
-        movk r2, 1
-        setcont r0, r1, r2
-
-    # sending message
-        movk r1, BETA
-        int r1, r0
-
 
     # msg[0] = BETA_SETPIXEL
         movk r1, 0  # index
@@ -52,4 +28,4 @@
         movk r1, BETA
         int r1, r0
 
-    gotok upd
+    gotok dead_loop
