@@ -55,6 +55,44 @@ impl TokenKind {
     } */
 }
 
+type MacrosMap = HashMap<String, TokenKind>;
+
+#[inline]
+fn insert_trubeta_macros(macros: &mut MacrosMap) {
+    macro_rules! add_macro {
+        ($str:expr, $kind:ident, $value:expr) => {
+            macros.insert(String::from($str), TokenKind::$kind($value))
+        };
+    }
+
+    /* blit flags ------------------------------------------------ */
+
+    // using address because binary floats are not supported by rustc.
+    add_macro!("SKIP_TRANSP", Address, 0b0001);
+
+    /* screen control -------------------------------------------- */
+
+    // 0 is nop.
+    add_macro!("BETA_STARTFRAME", Address, 1);
+    add_macro!("BETA_ENDFRAME",   Address, 2);
+    // 3-9
+
+    /* graphics primitives --------------------------------------- */
+
+    add_macro!("BETA_DOT",  Address, 10);
+    add_macro!("BETA_LINE", Address, 11);
+    add_macro!("BETA_BOX",  Address, 12);
+    add_macro!("BETA_FBOX", Address, 13);
+    // 14-19
+
+    /* textures manipulation ------------------------------------- */
+
+    add_macro!("BETA_BLIT",   Address, 20);
+    add_macro!("BETA_BLITS",  Address, 21);
+    add_macro!("BETA_FBLITS", Address, 22);
+    // 23-..
+}
+
 #[derive(PartialEq, Debug, Clone)]
 struct Token {
     pub kind: TokenKind,
@@ -501,7 +539,8 @@ impl Assembler {
 
         let mut constants: Vec<KValue> = Vec::new();
 
-        let mut macros: HashMap<String, TokenKind> = HashMap::new();
+        let mut macros: MacrosMap = HashMap::new();
+        insert_trubeta_macros(&mut macros);
 
         let reader = BufReader::new(file);
         let input_lines = reader.lines().map(|line| line.unwrap());
