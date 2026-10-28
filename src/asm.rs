@@ -65,6 +65,8 @@ fn insert_trubeta_macros(macros: &mut MacrosMap) {
         };
     }
 
+    add_macro!("BETA", Address, 0);
+
     /* blit flags ------------------------------------------------ */
 
     // using address because binary floats are not supported by rustc.
