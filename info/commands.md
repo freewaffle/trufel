@@ -1,5 +1,10 @@
 # Trufel modules commands list
 
+## Legend
+
+- `n` = number
+- `a` = address
+
 ## Trubeta (GPU)
 
 - `setbackbuf(mode:n)` - enables or disables backbuffer.
