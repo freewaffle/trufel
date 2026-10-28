@@ -1,4 +1,27 @@
 :dead_loop
+    # msg[0] = BETA_STARTFRAME
+        movk r1, 0  # index
+        movk r2, BETA_STARTFRAME
+        setcont r0, r1, r2
+
+    # sending message
+        movk r1, BETA
+        int r1, r0
+
+    # msg[0] = BETA_ENDFRAME
+        movk r1, 0  # index
+        movk r2, BETA_ENDFRAME
+        setcont r0, r1, r2
+
+    # msg[1] = 1  # fps
+        movk r1, 1  # index
+        movk r2, 1  # value
+        setcont r0, r1, r2
+
+    # sending message
+        movk r1, BETA
+        int r1, r0
+
     gotok dead_loop
 
 :boot
@@ -11,17 +34,17 @@
 
     # msg[1] = 6  # X
         movk r1, 1  # index
-        movk r2, 6
+        movk r2, 6  # value
         setcont r0, r1, r2
 
     # msg[2] = 6  # Y
         movk r1, 2  # index
-        movk r2, 6
+        movk r2, 6  # value
         setcont r0, r1, r2
 
     # msg[3] = 8  # orange color
         movk r1, 3  # index
-        movk r2, 8
+        movk r2, 8  # value
         setcont r0, r1, r2
 
     # sending message
