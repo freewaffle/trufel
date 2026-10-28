@@ -27,9 +27,9 @@
 :boot
     newcont r0
 
-    # msg[0] = BETA_SETPIXEL
+    # msg[0] = BETA_DOT
         movk r1, 0  # index
-        movk r2, BETA_SETPIXEL
+        movk r2, BETA_DOT
         setcont r0, r1, r2
 
     # msg[1] = 6  # X
