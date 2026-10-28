@@ -7,11 +7,6 @@
 
 ## Trubeta (GPU)
 
-- `setbackbuf(mode:n)` - enables or disables backbuffer.
-
-if `mode > 0`, allocates backbuffer in VRAM and uses it for drawing operations.
-else, destroys it and uses *screenbuffer* for drawing operations.
-
 - `startframe()` - signals GPU about starting frame.
 
 on calling `startframe`, GPU saves the time when it was called.
