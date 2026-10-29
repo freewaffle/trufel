@@ -318,36 +318,6 @@ impl Assembler {
                     ',' => Some(TokenKind::Comma),
                     ':' => Some(TokenKind::Colon),
 
-                    /* '$' => {
-                        if let Some(char) = next_char!() && char.is_ascii_digit() {
-                            let mut num: u32 = to_digit!(char);
-
-                            while let Some(char) = chars.peek() {
-                                let char = *char;
-
-                                if is_digit!(char) {
-                                    let digit = to_digit!(char);
-                                    assert!(digit < 10);
-
-                                    num_op!(num, checked_mul, 10);
-                                    num_op!(num, checked_add, digit);
-
-                                    next_char!();
-                                } else {
-                                    if char == '.' {
-                                        print_error!(DotInAddress, "dots cannot appear in addresses, as they cannot be float");
-                                    } else {
-                                        break;
-                                    }
-                                }
-                            }
-
-                            Some(TokenKind::Address(num))
-                        } else {
-                            print_error!(DollarWithoutAddress, "dollar sign without a following address");
-                        }
-                    } */
-
                     // whitespaces and tabs are skipped in the beginning
                     _ => None
                 };
@@ -526,6 +496,23 @@ impl Assembler {
         Ok(final_tokens)
     }
 
+    pub fn unwrap_macros(&self, tokens: Vec<Token>, macros: &MacrosMap) -> Result<Vec<Token>, ErrorKind> {
+        let mut result: Vec<Token> = Vec::new();
+
+        for gtoken in tokens {
+            let token = if let TokenKind::Identifier(ident) = &gtoken.kind
+            && let Some(mtk) = macros.get(ident) {
+                Token { kind: mtk.clone() }
+            } else {
+                gtoken
+            };
+
+            result.push(token);
+        }
+
+        Ok(result)
+    }
+    
     pub fn make_class_from_file(&self, file: File) -> Result<Class, ErrorKind> {
         macro_rules! print_error {
                 ($err_kind:ident, $msg:expr) => {{
@@ -558,52 +545,7 @@ impl Assembler {
             }
 
             let generated_tokens: Vec<Token> = self.generate_tokens(line, line_number)?;
-
-            let mut unmacrofied_tokens: Vec<Token> = Vec::new();
-
-            for gtoken in generated_tokens {
-                let token = if let TokenKind::Identifier(ident) = &gtoken.kind
-                && let Some(mtk) = macros.get(ident) {
-                    Token {
-                        kind: mtk.clone(),
-                        // other_field: gtoken.other_field
-                    }
-                } else {
-                    gtoken
-                };
-
-                unmacrofied_tokens.push(token);
-            }
-
-            /* let mut unconsted_tokens: Vec<Token> = Vec::new();
-
-            // `otoken` stands for "original token"
-            for otoken in unmacrofied_tokens {
-                use TokenKind::*;
-                let kind = match otoken.kind {
-                    Number(num) => {
-                        let kaddr: u32 = get_or_add_constant!(num, Number);
-                        Address(kaddr)
-                    }
-
-                    String(string) => {
-                        let kaddr: u32 = get_or_add_constant!(string, String);
-                        Address(kaddr)
-                    }
-
-                    Address(addr) => {
-                        let kaddr: u32 = get_or_add_constant!(addr, Address);
-                        Address(kaddr)
-                    }
-
-                    _ => otoken.kind
-                };
-
-                let token = Token { kind };
-
-                unconsted_tokens.push(token);
-            } */
-
+            let unmacrofied_tokens: Vec<Token> = self.unwrap_macros(generated_tokens, &macros)?;
             let tokens: Vec<Token> = self.unwrap_constants(&mut constants, unmacrofied_tokens, line_number)?;
 
             let first_token = if let Some(tok) = tokens.first() {
