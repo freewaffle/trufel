@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
@@ -130,7 +131,7 @@ pub enum ErrorKind {
     MacroRedefinition,
     FullConstantPool,
     InstructionBeforeLabel,
-    BootNotFound
+    BootNotDefined
 }
 
 struct Assembler {
@@ -536,7 +537,7 @@ impl Assembler {
         
         let mut code: Vec<Instruction> = Vec::new();
         let mut code_length: u32 = 0;
-        let mut labels: Vec<String> = Vec::new();
+        let mut labels: HashMap<String, u32> = HashMap::new();
         let mut boot_start: Option<u32> = None;
 
         let mut constants: Vec<KValue> = Vec::new();
@@ -1004,17 +1005,32 @@ impl Assembler {
                         print_error!(UnexpectedTokens, "expected an identifier after colon");
                     };
 
-                    if labels.contains(&name) {
-                        print_error!(LabelRedefinition, "duplicate label");
-                    } else if macros.contains_key(&name) {
-                        print_error!(MacroRedefinition, "a macro exists with the same name");
-                    } else {
-                        if name == "boot" {
-                            boot_start = Some(code_length);
+                    let is_boot_label = name == "boot";
+
+                    // проверяем, занят (определён) ли ключ в `labels`.
+                    match labels.entry(name.clone()) {
+                        // ключ занят.
+                        Entry::Occupied(_) => {
+                            print_error!(LabelRedefinition, "duplicate label");
                         }
 
-                        macros.insert(name.clone(), Address(code_length));
-                        labels.push(name);
+                        // ключ свободен. теперь проверям в макросах.
+                        Entry::Vacant(label_entry) => match macros.entry(name) {
+                            // ключ в макросах занят.
+                            Entry::Occupied(_) => {
+                                print_error!(MacroRedefinition, "a macro defined with the same name");
+                            }
+
+                            // ключ в макросах свободен.
+                            Entry::Vacant(macro_entry) => {
+                                if is_boot_label {
+                                    boot_start = Some(code_length);
+                                }
+
+                                macro_entry.insert(Address(code_length));
+                                label_entry.insert(code_length);
+                            }
+                        }
                     }
                 }
 
@@ -1027,7 +1043,7 @@ impl Assembler {
         let boot_start: u32 = if let Some(pos) = boot_start {
             pos
         } else {
-            print_error!(BootNotFound, "`boot` label not found");
+            print_error!(BootNotDefined, "`boot` label not defined");
         };
 
         let class = Class { code, boot_start, constants };
