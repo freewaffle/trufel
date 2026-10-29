@@ -4,11 +4,14 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 use crate::instr::InstructionKind;
+use crate::magic::MAGIC;
 use crate::vm::MAX_REGISTERS_COUNT;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
 
 const DEBUG: bool = true;
+
+const VERSION: u8 = 0;
 
 struct Instruction {
     pub kind: InstructionKind,
@@ -111,6 +114,17 @@ struct Class {
     pub code: Vec<Instruction>,
     pub boot_start: u32,
     pub constants: Vec<KValue>
+}
+
+impl Class {
+    pub fn into_trufcode(self) -> Result<Vec<u8>, ErrorKind> {
+        let mut trufcode: Vec<u8> = Vec::new();
+
+        trufcode.extend(MAGIC.iter());
+        trufcode.push(VERSION);
+
+        Ok(trufcode)
+    }
 }
 
 #[derive(Debug)]
