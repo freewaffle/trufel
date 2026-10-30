@@ -120,8 +120,64 @@ impl Class {
     pub fn into_trufcode(self) -> Result<Vec<u8>, ErrorKind> {
         let mut trufcode: Vec<u8> = Vec::new();
 
+        macro_rules! write_u32 {
+            ($num:expr) => {{
+                trufcode.push((($num >> 24) & 0xFF) as u8);
+                trufcode.push((($num >> 16) & 0xFF) as u8);
+                trufcode.push((($num >> 8)  & 0xFF) as u8);
+                trufcode.push(($num & 0xFF) as u8);
+            }};
+        }
+
+        macro_rules! write_u16 {
+            ($num:expr) => {{
+                trufcode.push((($num >> 8) & 0xFF) as u8);
+                trufcode.push(($num & 0xFF) as u8);
+            }};
+        }
+
+        macro_rules! write_f32 {
+            ($num:expr) => {{
+                trufcode.push((($num >> 24.) & 0xFF) as u8);
+                trufcode.push((($num >> 16.) & 0xFF) as u8);
+                trufcode.push((($num >> 8.)  & 0xFF) as u8);
+                trufcode.push(($num & 0xFF) as u8);
+            }};
+        }
+
         trufcode.extend(MAGIC.iter());
         trufcode.push(VERSION);
+
+        /*
+            constants type codes:
+            0 = break (end of constants table)
+            1 = number
+            2 = address
+            3 = string
+        */
+
+        for (cid, constant) in self.constants.into_iter().enumerate() {
+            trufcode.push(match constant {
+                KValue::Number(_) => 1,
+                KValue::Address(_) => 2,
+                KValue::String(_) => 3
+            });
+
+            write_u16!(cid as u16);
+
+            if let KValue::String(str) = &constant {
+                let len: u32 = str.len() as u32;
+                write_u32!(len);
+            }
+
+            match constant {
+                KValue::Number(num) => todo!(),
+                KValue::Address(addr) => write_u32!(addr),
+                KValue::String(str) => {
+                    for char in str.chars() {}
+                }
+            }
+        }
 
         Ok(trufcode)
     }
@@ -529,12 +585,12 @@ impl Assembler {
     
     pub fn make_class_from_file(&self, file: File) -> Result<Class, ErrorKind> {
         macro_rules! print_error {
-                ($err_kind:ident, $msg:expr) => {{
-                    eprintln!("{}:", self.filename);
-                    eprintln!("  error: {}", $msg);
-                    return Err(ErrorKind::$err_kind);
-                }};
-            }
+            ($err_kind:ident, $msg:expr) => {{
+                eprintln!("{}:", self.filename);
+                eprintln!("  error: {}", $msg);
+                return Err(ErrorKind::$err_kind);
+            }};
+        }
         
         let mut code: Vec<Instruction> = Vec::new();
         let mut code_length: u32 = 0;
