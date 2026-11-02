@@ -138,14 +138,12 @@ impl Class {
 
         macro_rules! write_f32 {
             ($num:expr) => {{
-                trufcode.push((($num >> 24.) & 0xFF) as u8);
-                trufcode.push((($num >> 16.) & 0xFF) as u8);
-                trufcode.push((($num >> 8.)  & 0xFF) as u8);
-                trufcode.push(($num & 0xFF) as u8);
+                let bytes = $num.to_bits();
+                write_u32!(bytes);
             }};
         }
 
-        trufcode.extend(MAGIC.iter());
+        trufcode.extend_from_slice(&MAGIC);
         trufcode.push(VERSION);
 
         /*
@@ -165,16 +163,33 @@ impl Class {
 
             write_u16!(cid as u16);
 
-            if let KValue::String(str) = &constant {
-                let len: u32 = str.len() as u32;
-                write_u32!(len);
-            }
-
             match constant {
-                KValue::Number(num) => todo!(),
+                KValue::Number(num) => write_f32!(num),
                 KValue::Address(addr) => write_u32!(addr),
                 KValue::String(str) => {
-                    for char in str.chars() {}
+                    let len: u32 = str.len() as u32;
+                    write_u32!(len);
+
+                    for char in str.chars() {
+                        let bytes = char as u32;
+                        write_u32!(bytes);
+                    }
+                }
+            }
+        }
+
+        // end the constants table
+        trufcode.push(0);
+
+        write_u32!(self.boot_start);
+
+        for instr in self.code {
+            let kind = instr.kind;
+
+            use InstructionKind::*;
+            match kind {
+                Nop => {
+                    trufcode.push(0);
                 }
             }
         }
