@@ -137,10 +137,9 @@ impl Class {
         }
 
         macro_rules! write_f32 {
-            ($num:expr) => {{
-                let bytes = $num.to_bits();
-                write_u32!(bytes);
-            }};
+            ($num:expr) => {
+                write_u32!($num.to_bits())
+            };
         }
 
         trufcode.extend_from_slice(&MAGIC);
