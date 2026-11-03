@@ -3,13 +3,15 @@ use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
+use execution_time::ExecutionTime;
+
 use crate::instr::InstructionKind;
-use crate::magic::MAGIC;
+use crate::magic::{MAGIC, MAGIC_LEN};
 use crate::vm::MAX_REGISTERS_COUNT;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
 
-const DEBUG: bool = true;
+const DEBUG: bool = false;
 
 const VERSION: u8 = 0;
 
@@ -110,6 +112,13 @@ enum KValue {
     String(String)
 }
 
+
+/// struct containing the Trufcode itself and its metadata
+struct Trufcode {
+    pub code: Vec<u8>,
+    pub code_len: usize
+}
+
 struct Class {
     pub code: Vec<Instruction>,
     pub boot_start: u32,
@@ -117,23 +126,42 @@ struct Class {
 }
 
 impl Class {
-    pub fn into_trufcode(self) -> Result<Vec<u8>, ErrorKind> {
-        let mut trufcode: Vec<u8> = Vec::new();
+    pub fn into_trufcode(self) -> Result<Trufcode, ErrorKind> {
+        let mut code: Vec<u8> = Vec::new();
+        let mut code_offset: usize = MAGIC_LEN + 1 /* version code */;
+        let mut writing_code = false;
+
+        macro_rules! write_header {
+            () => {{
+                if !writing_code {
+                    code_offset += 1;
+                }
+            }};
+        }
 
         macro_rules! write_u32 {
             ($num:expr) => {{
-                trufcode.push((($num >> 24) & 0xFF) as u8);
-                trufcode.push((($num >> 16) & 0xFF) as u8);
-                trufcode.push((($num >> 8)  & 0xFF) as u8);
-                trufcode.push(($num & 0xFF) as u8);
+                write_header!();
+                code.push((($num >> 24) & 0xFF) as u8);
+                code.push((($num >> 16) & 0xFF) as u8);
+                code.push((($num >> 8)  & 0xFF) as u8);
+                code.push(($num & 0xFF) as u8);
             }};
         }
 
         macro_rules! write_u16 {
             ($num:expr) => {{
-                trufcode.push((($num >> 8) & 0xFF) as u8);
-                trufcode.push(($num & 0xFF) as u8);
+                write_header!();
+                code.push((($num >> 8) & 0xFF) as u8);
+                code.push(($num & 0xFF) as u8);
             }};
+        }
+
+        macro_rules! write_u8 {
+            ($num:expr) => {
+                write_header!();
+                code.push($num);
+            };
         }
 
         macro_rules! write_f32 {
@@ -142,8 +170,8 @@ impl Class {
             };
         }
 
-        trufcode.extend_from_slice(&MAGIC);
-        trufcode.push(VERSION);
+        code.extend_from_slice(&MAGIC);
+        code.push(VERSION);
 
         /*
             constants type codes:
@@ -154,7 +182,7 @@ impl Class {
         */
 
         for (cid, constant) in self.constants.into_iter().enumerate() {
-            trufcode.push(match constant {
+            write_u8!(match constant {
                 KValue::Number(_) => 1,
                 KValue::Address(_) => 2,
                 KValue::String(_) => 3
@@ -178,44 +206,45 @@ impl Class {
         }
 
         // end the constants table
-        trufcode.push(0);
+        write_u8!(0);
 
         write_u32!(self.boot_start);
+        writing_code = true;
 
         for instr in self.code {
             let kind = instr.kind;
 
             macro_rules! r3 {
                 ($opcode:expr, $r0:ident, $r1:ident, $r2:ident) => {{
-                    trufcode.push($opcode);
-                    trufcode.push($r0);
-                    trufcode.push($r1);
-                    trufcode.push($r2);
+                    write_u8!($opcode);
+                    write_u8!($r0);
+                    write_u8!($r1);
+                    write_u8!($r2);
                 }};
             }
 
             use InstructionKind::*;
             match kind {
                 Nop => {
-                    trufcode.push(0);
+                    write_u8!(0);
                 }
 
                 Mov { r0, r1 } => {
-                    trufcode.push(1);
-                    trufcode.push(r0);
-                    trufcode.push(r1);
+                    write_u8!(1);
+                    write_u8!(r0);
+                    write_u8!(r1);
                 }
 
                 MovK { reg, kaddr } => {
-                    trufcode.push(2);
-                    trufcode.push(reg);
+                    write_u8!(2);
+                    write_u8!(reg);
                     write_u16!(kaddr);
                 }
 
                 MVoid { r0, rn } => {
-                    trufcode.push(3);
-                    trufcode.push(r0);
-                    trufcode.push(rn);
+                    write_u8!(3);
+                    write_u8!(r0);
+                    write_u8!(rn);
                 }
 
                 Add { r0, r1, r2 } => r3!(4,  r0, r1, r2),
@@ -227,9 +256,9 @@ impl Class {
                 Or  { r0, r1, r2 } => r3!(10, r0, r1, r2),
 
                 Not { r0, r1 } => {
-                    trufcode.push(11);
-                    trufcode.push(r0);
-                    trufcode.push(r1);
+                    write_u8!(11);
+                    write_u8!(r0);
+                    write_u8!(r1);
                 }
 
                 Shl { r0, r1, r2 } => r3!(12, r0, r1, r2),
@@ -240,25 +269,25 @@ impl Class {
                 Lte { r0, r1, r2 } => r3!(17, r0, r1, r2),
 
                 Test { reg } => {
-                    trufcode.push(18);
-                    trufcode.push(reg);
+                    write_u8!(18);
+                    write_u8!(reg);
                 }
 
                 Goto { pos } => {
-                    trufcode.push(19);
-                    trufcode.push(pos);
+                    write_u8!(19);
+                    write_u8!(pos);
                 }
 
                 GotoK { kaddr } => {
-                    trufcode.push(20);
+                    write_u8!(20);
                     write_u16!(kaddr);
                 }
 
                 Call { retr, pos, argr } => r3!(21, retr, pos, argr),
 
                 NewCont { reg } => {
-                    trufcode.push(22);
-                    trufcode.push(reg);
+                    write_u8!(22);
+                    write_u8!(reg);
                 }
 
                 GetCont { reg, cont, pos } => r3!(23, reg, cont, pos),
@@ -266,41 +295,46 @@ impl Class {
                 UpdCont { cont, pos, value } => r3!(25, cont, pos, value),
                 
                 DelCont { cont, pos } => {
-                    trufcode.push(26);
-                    trufcode.push(cont);
-                    trufcode.push(pos);
+                    write_u8!(26);
+                    write_u8!(cont);
+                    write_u8!(pos);
                 }
 
                 DropCont { cont } => {
-                    trufcode.push(27);
-                    trufcode.push(cont);
+                    write_u8!(27);
+                    write_u8!(cont);
                 }
 
                 Int { port, msg } => {
-                    trufcode.push(28);
-                    trufcode.push(port);
-                    trufcode.push(msg);
+                    write_u8!(28);
+                    write_u8!(port);
+                    write_u8!(msg);
                 }
 
                 RetV => {
-                    trufcode.push(29);
+                    write_u8!(29);
                 }
 
                 RetK { kaddr } => {
-                    trufcode.push(30);
+                    write_u8!(30);
                     write_u16!(kaddr);
                 }
 
                 Ret { reg } => {
-                    trufcode.push(31);
-                    trufcode.push(reg);
+                    write_u8!(31);
+                    write_u8!(reg);
                 }
 
                 Halt => {
-                    trufcode.push(32);
+                    write_u8!(32);
                 }
             }
         }
+
+        let trufcode = Trufcode {
+            code_len: code.len() - code_offset,
+            code,
+        };
 
         Ok(trufcode)
     }
@@ -833,6 +867,7 @@ impl Assembler {
                         }};
                     }
 
+                    // this hell should be optimized
                     let kind = match ident {
                         "nop" => { Instr::Nop }
 
@@ -916,28 +951,6 @@ impl Assembler {
                         }
 
                         "goto" => {
-                            /* let pos: u32 = if let Some(token) = args.get(0) {
-                                match token.kind {
-                                    Identifier(label_name) => {
-                                        todo!()
-                                    }
-
-                                    Address(addr) => {
-                                        if addr < MAX_GOTO_LENGTH {
-                                            addr
-                                        } else {
-                                            print_error!(MalformedNumber, "instruction address out of bounds");
-                                        }
-                                    }
-
-                                    _ => {
-                                        print_error!(ExpectedArgument, "expected an instruction address or a label at argument #0");
-                                    }
-                                }
-                            } else {
-                                print_error!(ExpectedArgument, "expected an instruction address or a label at argument #0");
-                            }; */
-
                             let pos: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -1190,20 +1203,46 @@ impl Assembler {
 pub fn compile_from_file(file: File, filename: String) -> Result<Vec<u8>, ErrorKind> {
     let assembler = Assembler::new(filename);
 
+    let timer = ExecutionTime::start();
     let class = assembler.make_class_from_file(file)?;
+    let codegen_time = timer.get_duration();
 
+    let code_length = class.code.len();
+    let consts_count = class.constants.len();
+    
     if DEBUG {
         println!("--------- INSTRUCTIONS ---------");
 
         for (index, instr) in class.code.iter().enumerate() {
             println!("[{}] {:#?}", index, instr.kind);
         }
-
+        
         println!("--------------------------------\n");
     }
 
-    // Ok(bytecode)
-    Ok(Vec::new())
+    println!("codegen took ~{} ms", codegen_time.as_millis());
+
+    println!(
+        "generated {} instructio{} and {} constan{}",
+
+        code_length,
+        if code_length != 1 { "ns" } else { "n" },
+
+        consts_count,
+        if consts_count != 1 { "ts" } else { "t" },
+    );
+
+    let trufcode = class.into_trufcode()?;
+    let code_size = trufcode.code_len;
+    
+    if code_size > 1024 {
+        let code_size_kibs = code_size as f32 / 1024.;
+        println!("code takes {:.1} KiB ({} bytes) of Trualpha memory", code_size_kibs, code_size);
+    } else {
+        println!("code takes {} bytes of Trualpha memory", code_size);
+    }
+
+    Ok(trufcode.code)
 }
 
 #[cfg(test)]
