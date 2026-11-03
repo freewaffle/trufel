@@ -19,99 +19,116 @@ macro_rules! error_exit {
     };
 }
 
+#[inline]
+fn usage() {
+    println!("usage: trufel [COMMAND] [FILENAME]");
+    println!();
+    println!("FILENAME is a Trufcode source or binary file");
+    println!();
+    println!("commands:");
+    println!("    run\truns file (compiling first if it's");
+    println!("       \ta source file)");
+    println!("    compile\tcompiles file and produces .truf file");
+    println!("    help\tprints this text");
+    println!("    version\tshow version information");
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    
-    let filename = if let Some(path) = args.get(1) {
-        path.to_owned()
+
+    let command = if let Some(cmd) = args.get(1) {
+        cmd.as_str()
     } else {
-        eprintln!("error: missing file name");
-        eprintln!("try executing: trufel [FILENAME]");
+        eprintln!("error: missing command");
+        eprintln!("try executing: trufel help");
         error_exit!();
     };
 
-    let path = Path::new(&filename);
+    match command {
+        "run" | "compile" => {
+            let run_required = command == "run";
 
-    let mut file = match File::open(path) {
-        Ok(file) => file,
-        Err(err) => {
-            eprintln!("error: can't open {filename}: {}", err.kind());
-            error_exit!();
-        }
-    };
+            let filename = if let Some(path) = args.get(1) {
+                path
+            } else {
+                eprintln!("error: missing filename");
+                eprintln!("try executing: trufel help");
+                error_exit!();
+            };
 
-    let mut this_magic = [0u8; MAGIC_LEN];
+            let path = Path::new(filename);
 
-    {
-        let bytes_read = match file.read(&mut this_magic) {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                eprintln!("error: can't read {filename}: {}", err.kind());
+            let stem = if path.is_file() {
+                path.file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+            } else {
+                eprintln!("error: {filename} is not a file");
+                error_exit!();
+            };
+
+            let mut file = match File::open(filename) {
+                Ok(file) => file,
+                Err(err) => {
+                    eprintln!("error: can't open {filename}: {}", err.kind());
+                    error_exit!();
+                }
+            };
+
+            let mut this_magic = [0u8; MAGIC_LEN];
+
+            let bytes_read = match file.read(&mut this_magic) {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    eprintln!("error: can't read {filename}: {}", err.kind());
+                    error_exit!();
+                }
+            };
+
+            if bytes_read < MAGIC_LEN {
+                eprintln!("error: {filename} is too short");
                 error_exit!();
             }
-        };
 
-        if bytes_read < MAGIC_LEN {
-            eprintln!("error: {filename} is too short");
-            error_exit!();
-        }
-    }
+            let is_binary = this_magic == MAGIC;
+            let mut code: Vec<u8>;
+            
+            if is_binary {
+                if !run_required {
+                    eprintln!("error: cannot compile an already compiled code");
+                    error_exit!();
+                }
 
-    let code: Vec<u8> = if this_magic == MAGIC {
-        let mut code: Vec<u8> = Vec::new();
-        if let Err(err) = file.read_to_end(&mut code) {
-            eprintln!("error: can't read {filename}: {}", err.kind());
-            error_exit!();
-        } else {
-            code
-        }
-    } else {
-        println!("compiling...");
-
-        let extension = if let Some(ext) = path.extension() {
-            ext.to_str().unwrap()
-        } else {
-            eprintln!("error: cannot determine what kind of source code is file {filename}");
-            eprintln!("this file must have one of these extensions:");
-            eprintln!(" - .trs for assembly code");
-            eprintln!(" - .trl for Trulang code");
-            error_exit!();
-        };
-
-        file.rewind().unwrap();
-
-        match extension {
-            "trs" => {
-                #[allow(irrefutable_let_patterns)]
-                if let Ok(code) = asm::compile_from_file(file, filename) {
+                code = Vec::new();
+                file.rewind().unwrap();
+                if let Err(err) = file.read_to_end(&mut code) {
+                    eprintln!("error: can't read {filename}: {}", err.kind());
+                    error_exit!();
+                }
+            } else {
+                code = if let Ok(code) = asm::compile_from_file(file, filename.clone()) {
                     code
                 } else {
                     // error details should have been printed
                     error_exit!();
-                }
+                };
             }
 
-            "trl" => {
-                eprintln!("error: .trl files are not currently supported, as the Trulang compiler is unfinished");
-                error_exit!();
-
-                /* if let Ok(code) = compiler::compile_from_file(file, path) {
-                    code
-                } else {
-                    eprintln!("error: can't compile");
-                    error_exit!();
-                } */
-            }
-
-            _ => {
-                eprintln!("error: unrecognized filename extension");
-                error_exit!();
+            if run_required {
+                // replace this with `start_vm(code)`-like function
+                drop(code);
+            } else {
+                let filename = format!("{stem}.truf");
             }
         }
-    };
 
-    // replace this with `start_vm(code)`-like function
-    drop(code);
+        _ => {
+            eprintln!("error: invalid command");
+            eprintln!("try executing: trufel help");
+            error_exit!();
+        }
+    }
 }
 
 /* use raylib::prelude::*;
