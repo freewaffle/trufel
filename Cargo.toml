@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+execution-time = "0.3.1"
 raylib = "6.0.0"
 
 [profile.release]
