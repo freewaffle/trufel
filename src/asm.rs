@@ -185,10 +185,119 @@ impl Class {
         for instr in self.code {
             let kind = instr.kind;
 
+            macro_rules! r3 {
+                ($opcode:expr, $r0:ident, $r1:ident, $r2:ident) => {{
+                    trufcode.push($opcode);
+                    trufcode.push($r0);
+                    trufcode.push($r1);
+                    trufcode.push($r2);
+                }};
+            }
+
             use InstructionKind::*;
             match kind {
                 Nop => {
                     trufcode.push(0);
+                }
+
+                Mov { r0, r1 } => {
+                    trufcode.push(1);
+                    trufcode.push(r0);
+                    trufcode.push(r1);
+                }
+
+                MovK { reg, kaddr } => {
+                    trufcode.push(2);
+                    trufcode.push(reg);
+                    write_u16!(kaddr);
+                }
+
+                MVoid { r0, rn } => {
+                    trufcode.push(3);
+                    trufcode.push(r0);
+                    trufcode.push(rn);
+                }
+
+                Add { r0, r1, r2 } => r3!(4,  r0, r1, r2),
+                Sub { r0, r1, r2 } => r3!(5,  r0, r1, r2),
+                Mul { r0, r1, r2 } => r3!(6,  r0, r1, r2),
+                Div { r0, r1, r2 } => r3!(7,  r0, r1, r2),
+                Rem { r0, r1, r2 } => r3!(8,  r0, r1, r2),
+                And { r0, r1, r2 } => r3!(9,  r0, r1, r2),
+                Or  { r0, r1, r2 } => r3!(10, r0, r1, r2),
+
+                Not { r0, r1 } => {
+                    trufcode.push(11);
+                    trufcode.push(r0);
+                    trufcode.push(r1);
+                }
+
+                Shl { r0, r1, r2 } => r3!(12, r0, r1, r2),
+                Shr { r0, r1, r2 } => r3!(13, r0, r1, r2),
+                Eq  { r0, r1, r2 } => r3!(14, r0, r1, r2),
+                Neq { r0, r1, r2 } => r3!(15, r0, r1, r2),
+                Lt  { r0, r1, r2 } => r3!(16, r0, r1, r2),
+                Lte { r0, r1, r2 } => r3!(17, r0, r1, r2),
+
+                Test { reg } => {
+                    trufcode.push(18);
+                    trufcode.push(reg);
+                }
+
+                Goto { pos } => {
+                    trufcode.push(19);
+                    trufcode.push(pos);
+                }
+
+                GotoK { kaddr } => {
+                    trufcode.push(20);
+                    write_u16!(kaddr);
+                }
+
+                Call { retr, pos, argr } => r3!(21, retr, pos, argr),
+
+                NewCont { reg } => {
+                    trufcode.push(22);
+                    trufcode.push(reg);
+                }
+
+                GetCont { reg, cont, pos } => r3!(23, reg, cont, pos),
+                SetCont { cont, pos, value } => r3!(24, cont, pos, value),
+                UpdCont { cont, pos, value } => r3!(25, cont, pos, value),
+                
+                DelCont { cont, pos } => {
+                    trufcode.push(26);
+                    trufcode.push(cont);
+                    trufcode.push(pos);
+                }
+
+                DropCont { cont } => {
+                    trufcode.push(27);
+                    trufcode.push(cont);
+                }
+
+                Int { port, msg } => {
+                    trufcode.push(28);
+                    trufcode.push(port);
+                    trufcode.push(msg);
+                }
+
+                RetV => {
+                    trufcode.push(29);
+                }
+
+                RetK { kaddr } => {
+                    trufcode.push(30);
+                    write_u16!(kaddr);
+                }
+
+                Ret { reg } => {
+                    trufcode.push(31);
+                    trufcode.push(reg);
+                }
+
+                Halt => {
+                    trufcode.push(32);
                 }
             }
         }
