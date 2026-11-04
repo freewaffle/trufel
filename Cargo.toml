@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 execution-time = "0.3.1"
-raylib = "6.0.0"
+sola-raylib = { version = "6.3.1", features = ["default", "wayland"] }
 
 [profile.release]
 codegen-units = 1
