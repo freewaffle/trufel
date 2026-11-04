@@ -93,7 +93,7 @@ fn main() {
 
             let is_binary = this_magic == MAGIC;
             let mut code: Vec<u8>;
-            
+
             file.rewind().unwrap();
             
             if is_binary {
@@ -108,6 +108,7 @@ fn main() {
                     error_exit!();
                 }
             } else {
+                println!("compiling...");
                 code = if let Ok(code) = asm::compile_from_file(file, filename.clone()) {
                     code
                 } else {
