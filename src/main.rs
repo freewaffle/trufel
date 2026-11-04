@@ -94,6 +94,8 @@ fn main() {
             let is_binary = this_magic == MAGIC;
             let mut code: Vec<u8>;
             
+            file.rewind().unwrap();
+            
             if is_binary {
                 if compile_only {
                     eprintln!("error: {filename} is a Trufcode binary");
@@ -101,7 +103,6 @@ fn main() {
                 }
 
                 code = Vec::new();
-                file.rewind().unwrap();
                 if let Err(err) = file.read_to_end(&mut code) {
                     eprintln!("error: can't read {filename}: {}", err.kind());
                     error_exit!();
