@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use std::fs::File;
+use std::fs::{File, write};
 use std::path::Path;
 use std::io::{Read, Seek};
 
@@ -30,7 +30,7 @@ fn usage() {
     println!("       \ta source file)");
     println!("    compile\tcompiles file and produces .truf file");
     println!("    help\tprints this text");
-    println!("    version\tshow version information");
+    println!("    version\tshow version and license information");
 }
 
 fn main() {
@@ -46,7 +46,7 @@ fn main() {
 
     match command {
         "run" | "compile" => {
-            let run_required = command == "run";
+            let compile_only = command == "compile";
 
             let filename = if let Some(path) = args.get(1) {
                 path
@@ -95,8 +95,8 @@ fn main() {
             let mut code: Vec<u8>;
             
             if is_binary {
-                if !run_required {
-                    eprintln!("error: cannot compile an already compiled code");
+                if compile_only {
+                    eprintln!("error: {filename} is a Trufcode binary");
                     error_exit!();
                 }
 
@@ -115,12 +115,26 @@ fn main() {
                 };
             }
 
-            if run_required {
+            if compile_only {
+                let filename = format!("{stem}.truf");
+                if let Err(err) = write(&filename, code) {
+                    eprintln!("error: failed to write to {filename}: {}", err.kind());
+                    error_exit!();
+                }
+            } else {
                 // replace this with `start_vm(code)`-like function
                 drop(code);
-            } else {
-                let filename = format!("{stem}.truf");
             }
+        }
+
+        "help" => usage(),
+
+        "version" => {
+            println!("Trufel v{} <https://github.com/freewaffle/trufel>", env!("CARGO_PKG_VERSION"));
+            println!("Copyright (C) 2026 freewaffle");
+            println!();
+            println!("this program comes with ABSOLUTELY NO WARRANTY.");
+            println!("this is free software, and you are welcome to redistribute it.");
         }
 
         _ => {
