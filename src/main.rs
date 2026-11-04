@@ -59,10 +59,17 @@ fn main() {
             let path = Path::new(filename);
 
             let stem = if path.is_file() {
-                path.file_stem()
+                let stem = path.file_stem()
                     .unwrap()
                     .to_str()
+                    .unwrap();
+
+                let path = path.parent()
                     .unwrap()
+                    .to_str()
+                    .unwrap();
+
+                format!("{path}/{stem}")
             } else {
                 eprintln!("error: {filename} is not a file");
                 error_exit!();
@@ -118,7 +125,7 @@ fn main() {
             }
 
             if compile_only {
-                let filename = format!("{stem}.truf");
+                let filename = stem + ".truf";
                 if let Err(err) = write(&filename, code) {
                     eprintln!("error: failed to write to {filename}: {}", err.kind());
                     error_exit!();
