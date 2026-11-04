@@ -48,7 +48,7 @@ fn main() {
         "run" | "compile" => {
             let compile_only = command == "compile";
 
-            let filename = if let Some(path) = args.get(1) {
+            let filename = if let Some(path) = args.get(2) {
                 path
             } else {
                 eprintln!("error: missing filename");
