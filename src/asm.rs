@@ -402,12 +402,6 @@ impl Assembler {
             };
         }
 
-        macro_rules! is_string_quote {
-            ($ch:expr) => {
-                ($ch == '"' || $ch == '\'')
-            };
-        }
-
         macro_rules! is_identifier {
             ($ch:expr) => {
                 ($ch.is_ascii_alphabetic() || $ch == '_')
@@ -433,7 +427,7 @@ impl Assembler {
 
             let is_identifier: bool = is_identifier!(char);
             let is_digit: bool = is_digit!(char);
-            let is_string: bool = is_string_quote!(char);
+            let is_string: bool = char == '"' || char == '\'';
             let is_line_comment: bool = char == '#';
 
             let mut new_token: Option<Token> = None;
@@ -519,9 +513,10 @@ impl Assembler {
             if is_string {
                 let mut string: String = String::new();
                 let mut closed = false;
+                let started_quote_mark = char;
 
                 while let Some(char) = next_char!() {
-                    if is_string_quote!(char) {
+                    if char == started_quote_mark {
                         closed = true;
                         break;
                     }
