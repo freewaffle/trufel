@@ -126,40 +126,40 @@ struct Class {
 
 impl Class {
     pub fn into_trufcode(self) -> Result<Trufcode, ErrorKind> {
-        let mut code: Vec<u8> = Vec::new();
-        let mut code_offset: usize = MAGIC_LEN + 1 /* version code */;
-        let mut writing_code = false;
+        let mut chunk: Vec<u8> = Vec::new();
+        let mut code_start_offset: usize = MAGIC_LEN + 1 /* version code */;
+        let mut is_writing_code = false;
 
-        macro_rules! write_header {
+        macro_rules! write_op_header {
             () => {{
-                if !writing_code {
-                    code_offset += 1;
+                if !is_writing_code {
+                    code_start_offset += 1;
                 }
             }};
         }
 
         macro_rules! write_u32 {
             ($num:expr) => {{
-                write_header!();
-                code.push((($num >> 24) & 0xFF) as u8);
-                code.push((($num >> 16) & 0xFF) as u8);
-                code.push((($num >> 8)  & 0xFF) as u8);
-                code.push(($num & 0xFF) as u8);
+                write_op_header!();
+                chunk.push((($num >> 24) & 0xFF) as u8);
+                chunk.push((($num >> 16) & 0xFF) as u8);
+                chunk.push((($num >> 8)  & 0xFF) as u8);
+                chunk.push(($num & 0xFF) as u8);
             }};
         }
 
         macro_rules! write_u16 {
             ($num:expr) => {{
-                write_header!();
-                code.push((($num >> 8) & 0xFF) as u8);
-                code.push(($num & 0xFF) as u8);
+                write_op_header!();
+                chunk.push((($num >> 8) & 0xFF) as u8);
+                chunk.push(($num & 0xFF) as u8);
             }};
         }
 
         macro_rules! write_u8 {
             ($num:expr) => {
-                write_header!();
-                code.push($num);
+                write_op_header!();
+                chunk.push($num);
             };
         }
 
@@ -169,8 +169,8 @@ impl Class {
             };
         }
 
-        code.extend_from_slice(&MAGIC);
-        code.push(VERSION);
+        chunk.extend_from_slice(&MAGIC);
+        chunk.push(VERSION);
 
         /*
             constants type codes:
@@ -208,7 +208,7 @@ impl Class {
         write_u8!(0);
 
         write_u32!(self.boot_start);
-        writing_code = true;
+        is_writing_code = true;
 
         for instr in self.code {
             let kind = instr.kind;
@@ -331,8 +331,8 @@ impl Class {
         }
 
         let trufcode = Trufcode {
-            code_len: code.len() - code_offset,
-            code,
+            code_len: chunk.len() - code_start_offset,
+            code: chunk,
         };
 
         Ok(trufcode)
