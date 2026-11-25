@@ -10,6 +10,7 @@ use crate::magic::{MAGIC, MAGIC_LEN};
 use crate::vm::MAX_REGISTERS_COUNT;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
+const MAX_STRING_LENGTH: usize = 2_usize.pow(32);
 
 const DEBUG: bool = true;
 
@@ -348,6 +349,7 @@ pub enum ErrorKind {
     TooLongIdentifier,
     RedundantDot,
     UnclosedString,
+    TooLongString,
     UnexpectedTokens,
     ExpectedTokens,
     ExpectedArgument,
@@ -526,6 +528,10 @@ impl Assembler {
                 }
 
                 if closed {
+                    if string.len() > MAX_STRING_LENGTH {
+                        print_error!(TooLongString, "reached string size limit (2**32 max bytes)");
+                    }
+
                     let token = Token { kind: TokenKind::String(string) };
                     new_token = Some(token);
                 } else {
