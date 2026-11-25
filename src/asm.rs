@@ -11,7 +11,7 @@ use crate::vm::MAX_REGISTERS_COUNT;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
 
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 
 const VERSION: u8 = 0;
 
@@ -357,7 +357,8 @@ pub enum ErrorKind {
     MacroRedefinition,
     FullConstantPool,
     InstructionBeforeLabel,
-    BootNotDefined
+    BootNotDefined,
+    IOError
 }
 
 struct Assembler {
@@ -754,7 +755,7 @@ impl Assembler {
         insert_trubeta_macros(&mut macros);
 
         let reader = BufReader::new(file);
-        let input_lines = reader.lines().map(|line| line.unwrap());
+        let input_lines = reader.lines();
 
         for (line_number, line) in (1u32..).zip(input_lines) {
             macro_rules! print_error {
@@ -764,6 +765,11 @@ impl Assembler {
                     return Err(ErrorKind::$err_kind);
                 }};
             }
+
+            let line = match line {
+                Ok(string) => string,
+                Err(err) => print_error!(IOError, err.kind())
+            };
 
             let generated_tokens: Vec<Token> = self.generate_tokens(line, line_number)?;
             let unmacrofied_tokens: Vec<Token> = self.unwrap_macros(generated_tokens, &macros)?;
