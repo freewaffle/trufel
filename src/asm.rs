@@ -473,8 +473,10 @@ impl Assembler {
             }
 
             if is_digit {
+                // TODO: use one String to store parsed number.
+
                 let mut num_a: u32 = to_digit!(char);
-                let mut num_b: u32 = 0;
+                let mut num_b: String = String::new();
                 let mut collecting_a = true;
 
                 while let Some(char) = chars.peek() {
@@ -488,8 +490,7 @@ impl Assembler {
                             num_op!(num_a, checked_mul, 10);
                             num_op!(num_a, checked_add, digit);
                         } else {
-                            num_op!(num_b, checked_mul, 10);
-                            num_op!(num_b, checked_add, digit);
+                            num_b.push(char);
                         }
 
                         next_char!();
