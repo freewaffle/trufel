@@ -193,12 +193,13 @@ impl Class {
                 KValue::Number(num) => write_f32!(num),
                 KValue::Address(addr) => write_u32!(addr),
                 KValue::String(str) => {
-                    let len: u32 = str.len() as u32;
+                    let bytes = str.as_bytes();
+
+                    let len: u32 = bytes.len() as u32;
                     write_u32!(len);
 
-                    for char in str.chars() {
-                        let bytes = char as u32;
-                        write_u32!(bytes);
+                    for byte in bytes {
+                        write_u8!(*byte);
                     }
                 }
             }
