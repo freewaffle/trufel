@@ -9,7 +9,6 @@ mod magic;
 mod vm;
 mod instr;
 mod asm;
-// mod compiler;
 
 use magic::*;
 
@@ -153,19 +152,3 @@ fn main() {
         }
     }
 }
-
-/* use raylib::prelude::*;
-
-fn main() {
-    let (mut rl, rl_thread) = raylib::init()
-        .size(640, 480)
-        .title("Trufel")
-        .build();
-
-    while !rl.window_should_close() {
-        rl.draw(&rl_thread, | mut drawer | {
-            drawer.clear_background(Color::WHITE);
-            drawer.draw_text("Hello, world!", 12, 12, 20, Color::BLACK);
-        });
-    }
-} */
