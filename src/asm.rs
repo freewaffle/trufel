@@ -28,7 +28,6 @@ enum TokenKind {
     Address(u32),
     Register(u8),
 
-    Comma,
     Colon,
 }
 
@@ -538,7 +537,6 @@ impl Assembler {
 
             if new_token.is_none() {
                 let kind = match char {
-                    ',' => Some(TokenKind::Comma),
                     ':' => Some(TokenKind::Colon),
 
                     // whitespaces and tabs are skipped in the beginning
@@ -778,7 +776,7 @@ impl Assembler {
                 continue;
             };
 
-            let mut args: Vec<Token> = Vec::new();
+            /* let mut args: Vec<Token> = Vec::new();
 
             if let Some(tokens) = tokens.get(1..) {
                 for slice in tokens.split(|tok| tok.kind == TokenKind::Comma) {
@@ -793,7 +791,7 @@ impl Assembler {
                         );
                     }
                 }
-            }
+            } */
 
             use TokenKind::*;
             use InstructionKind as Instr;
@@ -809,7 +807,7 @@ impl Assembler {
 
                     macro_rules! get_arg {
                         ($pos:expr, $tok_kind:ident) => {
-                            match args.get($pos) {
+                            match tokens.get(1 + $pos) {
                                 Some(tok) => if let TokenKind::$tok_kind(value) = tok.kind {
                                     Some(value)
                                 } else {
@@ -1261,14 +1259,12 @@ mod tests {
 
     #[test]
     fn test_token_generator() {
-        let input = "ident1 123.45, ident2, $567";
+        let input = "ident1 123.45 ident2 $567";
 
         let expected = vec![
             token!(Identifier, String::from("ident1")),
             token!(Number, 123.45),
-            token!(Comma),
             token!(Identifier, String::from("ident2")),
-            token!(Comma),
             token!(Address, 567),
         ];
 
