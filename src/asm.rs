@@ -7,6 +7,7 @@ use execution_time::ExecutionTime;
 
 use crate::instr::InstructionKind;
 use crate::magic::MAGIC;
+use crate::vm::MAX_REGISTERS_COUNT;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
 
@@ -499,6 +500,10 @@ impl Assembler {
                                         break;
                                     }
                                 }
+                            }
+
+                            if num >= MAX_REGISTERS_COUNT as u8 {
+                                print_error!(MalformedNumber, "register index out of bounds");
                             }
 
                             tokens.pop();
