@@ -1,2 +1,3 @@
 --- assembler ---
-...
+1. use hashmap for the constant pool
+2. dramaticaly optimize `let kind = match ident` (in `make_class_from_file`).
