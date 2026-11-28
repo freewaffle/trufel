@@ -773,6 +773,14 @@ impl Assembler {
 
                     let args_count = tokens.len() - 1;
 
+                    macro_rules! check_arity {
+                        ($required:expr) => {
+                            if args_count != $required {
+                                print_error!(InvalidArity, format!("expected {} argument(s), but got {args_count}", $required));
+                            }
+                        };
+                    }
+
                     macro_rules! get_arg {
                         ($pos:expr, $tok_kind:ident) => {
                             match tokens.get(1 + $pos) {
@@ -783,14 +791,6 @@ impl Assembler {
                                 },
 
                                 None => None
-                            }
-                        };
-                    }
-
-                    macro_rules! check_arity {
-                        ($required:expr) => {
-                            if args_count != $required {
-                                print_error!(InvalidArity, format!("expected {} argument(s), but got {args_count}", $required));
                             }
                         };
                     }
@@ -1159,6 +1159,10 @@ impl Assembler {
                 }
 
                 Colon => {
+                    if tokens.len() > 2 {
+                        print_error!(InvalidArity, "unexpected tokens");
+                    }
+
                     let name = if let Some(Token::Identifier(ident)) = tokens.get(1) {
                         ident.clone()
                     } else {
