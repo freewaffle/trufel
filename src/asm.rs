@@ -837,7 +837,7 @@ impl Assembler {
                         }};
                     }
 
-                    // this hell should be optimized
+                    // this hell should be simplified
                     let kind = match ident {
                         "nop" => { Instr::Nop }
 
@@ -1124,14 +1124,14 @@ impl Assembler {
 
                     let is_boot_label = name == "boot";
 
-                    // проверяем, занят (определён) ли ключ в `labels`.
+                    // проверяем, существует ли такая метка.
                     match labels.entry(name.clone()) {
                         // ключ занят.
                         Entry::Occupied(_) => {
                             print_error!(LabelRedefinition, "duplicate label");
                         }
 
-                        // ключ свободен. теперь проверям в макросах.
+                        // такой метки нет. теперь проверям в макросах.
                         Entry::Vacant(label_entry) => match macros.entry(name) {
                             // ключ в макросах занят.
                             Entry::Occupied(_) => {
