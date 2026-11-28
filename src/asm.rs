@@ -344,7 +344,6 @@ pub enum ErrorKind {
     UnclosedString,
     TooLongString,
     UnexpectedTokens,
-    ExpectedTokens,
     ExpectedArgument,
     MalformedNumber,
     InvalidOpcode,
@@ -626,80 +625,6 @@ impl Assembler {
         }
 
         // tokens = self.parse_numbers(tokens, line_number)?;
-
-        Ok(tokens)
-    }
-
-    fn parse_numbers(&self, tokens: Vec<Token>, line_number: u32) -> Result<Vec<Token>, ErrorKind> {
-        macro_rules! print_error {
-            ($err_kind:ident, $msg:expr) => {{
-                eprintln!("{}: line {}:", self.filename, line_number);
-                eprintln!("  error: {}", $msg);
-                return Err(ErrorKind::$err_kind);
-            }};
-        }
-
-        let mut iter = tokens.into_iter().peekable();
-        let mut tokens: Vec<Token> = Vec::new();
-
-        while let Some(token) = iter.next() {
-            let prev_token = token;
-            let new_token: Token = if let Token::Identifier(ident) = prev_token {
-                // если текущий токен это идент, то проверяем его значение
-                use Token::*;
-                match ident.as_str() {
-                    // регистр
-                    "r" => {
-                        // если есть следующий токен, и это число:
-                        if let Some(Token::Number(num)) = iter.next() {
-                            let index_32: u32 = if num % 1. == 0. {
-                                num as u32
-                            } else {
-                                print_error!(MalformedNumber, "register index with floating point");
-                            };
-
-                            let index_8: u8 = if let Ok(num) = index_32.try_into() {
-                                num
-                            } else {
-                                print_error!(MalformedNumber, "register index out of bounds");
-                            };
-
-                            if index_8 < MAX_REGISTERS_COUNT as u8 {
-                                Register(index_8)
-                            } else {
-                                print_error!(MalformedNumber, "register index out of bounds");
-                            }
-                        } else {
-                            print_error!(ExpectedTokens, "expected a register index after 'r' label");
-                        }
-                    }
-
-                    // адрес
-                    "a" => {
-                        // если есть следующий токен, и это число:
-                        if let Some(Token::Number(num)) = iter.next() {
-                            let address: u32 = if num % 1. == 0. {
-                                num as u32
-                            } else {
-                                print_error!(MalformedNumber, "address with floating point");
-                            };
-
-                            Address(address)
-                        } else {
-                            print_error!(ExpectedTokens, "expected an address after 'a' label");
-                        }
-                    }
-
-                    // в остальных случаях оставляем как есть
-                    _ => Identifier(ident)
-                }
-            } else {
-                // если это не идент, то оставляем как есть
-                prev_token
-            };
-
-            tokens.push(new_token);
-        }
 
         Ok(tokens)
     }
