@@ -10,7 +10,7 @@ use crate::magic::{MAGIC, MAGIC_LEN};
 use crate::vm::MAX_REGISTERS_COUNT;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
-const MAX_STRING_LENGTH: usize = 2_usize.pow(32);
+const MAX_STRING_SIZE: usize = 2_usize.pow(32);
 
 const DEBUG: bool = true;
 
@@ -578,6 +578,10 @@ impl Assembler {
                 let started_quote_mark = char;
 
                 while let Some(char) = next_char!() {
+                    if string.len() > MAX_STRING_SIZE {
+                        print_error!(TooLongString, "reached string size limit (2**32 max bytes)");
+                    }
+
                     if char == started_quote_mark {
                         closed = true;
                         break;
@@ -587,10 +591,6 @@ impl Assembler {
                 }
 
                 if closed {
-                    if string.len() > MAX_STRING_LENGTH {
-                        print_error!(TooLongString, "reached string size limit (2**32 max bytes)");
-                    }
-
                     let token = Token::String(string);
                     new_token = Some(token);
                 } else {
