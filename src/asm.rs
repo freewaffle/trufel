@@ -7,7 +7,6 @@ use execution_time::ExecutionTime;
 
 use crate::instr::InstructionKind;
 use crate::magic::{MAGIC, MAGIC_LEN};
-use crate::vm::MAX_REGISTERS_COUNT;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
 const MAX_STRING_SIZE: usize = 2_usize.pow(32);
