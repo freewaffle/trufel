@@ -470,47 +470,119 @@ impl Assembler {
             }
 
             if is_digit {
-                // TODO: use one String to store parsed number.
+                let addr_prefix = TokenKind::Identifier(String::from("a"));
+                let reg_prefix = TokenKind::Identifier(String::from("r"));
+                let last = tokens.last();
 
-                let mut num_a: u32 = to_digit!(char);
-                let mut num_b: String = String::new();
-                let mut collecting_a = true;
+                new_token = if let Some(TokenKind::Identifier(ident)) = last {
+                    match ident.as_str() {
+                        "a" => {
+                            let mut num: u32 = to_digit!(char);
 
-                while let Some(char) = chars.peek() {
-                    let char = *char;
+                            while let Some(char) = chars.peek() {
+                                let char = *char;
 
-                    if is_digit!(char) {
-                        let digit = to_digit!(char);
-                        assert!(digit < 10);
+                                if is_digit!(char) {
+                                    let digit = to_digit!(char);
+                                    assert!(digit < 10);
 
-                        if collecting_a {
-                            num_op!(num_a, checked_mul, 10);
-                            num_op!(num_a, checked_add, digit);
-                        } else {
-                            num_b.push(char);
+                                    num_op!(num, checked_mul, 10);
+                                    num_op!(num, checked_add, digit);
+
+                                    next_char!();
+                                } else {
+                                    if char == '.' {
+                                        print_error!(MalformedNumber, "unexpected dot in an address");
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            let token = Token { kind: TokenKind::Address(num) };
+                            tokens.pop();
+
+                            Some(token)
                         }
 
-                        next_char!();
-                    } else {
-                        if char == '.' {
-                            if collecting_a {
-                                collecting_a = false;
-                                next_char!();
-                                continue;
-                            } else {
-                                print_error!(RedundantDot, "redundant dot near number");
+                        "r" => {
+                            let mut num: u8 = to_digit!(char).try_into().unwrap();
+
+                            while let Some(char) = chars.peek() {
+                                let char = *char;
+
+                                if is_digit!(char) {
+                                    let digit: u8 = to_digit!(char).try_into().unwrap();
+                                    assert!(digit < 10);
+
+                                    num_op!(num, checked_mul, 10);
+                                    num_op!(num, checked_add, digit);
+
+                                    next_char!();
+                                } else {
+                                    if char == '.' {
+                                        print_error!(MalformedNumber, "unexpected dot in an address");
+                                    } else {
+                                        break;
+                                    }
+                                }
                             }
+
+                            let token = Token { kind: TokenKind::Register(num) };
+                            tokens.pop();
+
+                            Some(token)
+                        }
+
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+
+                if new_token.is_none() {
+                    // TODO: use one String to store parsed number.
+
+                    let mut num_a: u32 = to_digit!(char);
+                    let mut num_b: String = String::new();
+                    let mut collecting_a = true;
+
+                    while let Some(char) = chars.peek() {
+                        let char = *char;
+
+                        if is_digit!(char) {
+                            let digit = to_digit!(char);
+                            assert!(digit < 10);
+
+                            if collecting_a {
+                                num_op!(num_a, checked_mul, 10);
+                                num_op!(num_a, checked_add, digit);
+                            } else {
+                                num_b.push(char);
+                            }
+
+                            next_char!();
                         } else {
-                            break;
+                            if char == '.' {
+                                if collecting_a {
+                                    collecting_a = false;
+                                    next_char!();
+                                    continue;
+                                } else {
+                                    print_error!(RedundantDot, "redundant dot near number");
+                                }
+                            } else {
+                                break;
+                            }
                         }
                     }
+
+                    let snum: String = format!("{num_a}.{num_b}");
+                    let num: f32 = snum.parse().unwrap();
+
+                    let token = Token { kind: TokenKind::Number(num) };
+                    new_token = Some(token);
                 }
-
-                let snum: String = format!("{num_a}.{num_b}");
-                let num: f32 = snum.parse().unwrap();
-
-                let token = Token { kind: TokenKind::Number(num) };
-                new_token = Some(token);
             }
 
             if is_string {
@@ -566,7 +638,7 @@ impl Assembler {
             }
         }
 
-        tokens = self.parse_numbers(tokens, line_number)?;
+        // tokens = self.parse_numbers(tokens, line_number)?;
 
         Ok(tokens)
     }
@@ -629,7 +701,7 @@ impl Assembler {
 
                             Address(address)
                         } else {
-                            print_error!(ExpectedTokens, "expected an address after 'r' label");
+                            print_error!(ExpectedTokens, "expected an address after 'a' label");
                         }
                     }
 
@@ -788,23 +860,6 @@ impl Assembler {
                 // the Vec is empty
                 continue;
             };
-
-            /* let mut args: Vec<Token> = Vec::new();
-
-            if let Some(tokens) = tokens.get(1..) {
-                for slice in tokens.split(|tok| tok.kind == TokenKind::Comma) {
-                    if slice.len() == 1 {
-                        args.push(slice[0].clone());
-                    } else {
-                        // mov $0 $1, $2
-                        //       ^^^ error
-                        print_error!(
-                            UnexpectedTokens,
-                            "multiple tokens in an argument. did you forget inserting a comma?"
-                        );
-                    }
-                }
-            } */
 
             use TokenKind::*;
             use InstructionKind as Instr;
