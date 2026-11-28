@@ -29,7 +29,7 @@ fn usage() {
     println!("       \ta source file)");
     println!("    compile\tcompiles file and produces .truf file");
     println!("    help\tprints this text");
-    println!("    version\tshow version and license information");
+    println!("    version\tshows version and license information");
 }
 
 fn main() {
