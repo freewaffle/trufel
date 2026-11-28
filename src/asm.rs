@@ -22,7 +22,7 @@ struct Instruction {
 
 #[derive(PartialEq, Debug, Clone)]
 #[repr(u8)]
-enum TokenKind {
+enum Token {
     Identifier(String),
     String(String),
     Number(f32),
@@ -32,11 +32,9 @@ enum TokenKind {
     Colon,
 }
 
-impl TokenKind {
+impl Token {
     /* #[inline]
     fn description(&self, with_article: bool) -> &str {
-        use TokenKind::*;
-
         if with_article {
             match self {
                 Identifier(..) => "an identifier",
@@ -61,13 +59,13 @@ impl TokenKind {
     } */
 }
 
-type MacrosMap = HashMap<String, TokenKind>;
+type MacrosMap = HashMap<String, Token>;
 
 #[inline]
 fn insert_trubeta_macros(macros: &mut MacrosMap) {
     macro_rules! add_macro {
         ($str:expr, $kind:ident, $value:expr) => {
-            macros.insert(String::from($str), TokenKind::$kind($value))
+            macros.insert(String::from($str), Token::$kind($value))
         };
     }
 
@@ -99,11 +97,6 @@ fn insert_trubeta_macros(macros: &mut MacrosMap) {
     add_macro!("BETA_BLITS",  Address, 21);
     add_macro!("BETA_FBLITS", Address, 22);
     // 23-..
-}
-
-#[derive(PartialEq, Debug, Clone)]
-struct Token {
-    pub kind: TokenKind,
 }
 
 enum KValue {
@@ -465,16 +458,13 @@ impl Assembler {
                     }
                 }
 
-                let token = Token { kind: TokenKind::Identifier(ident) };
-                new_token = Some(token);
+                new_token = Some(Token::Identifier(ident));
             }
 
             if is_digit {
-                let addr_prefix = TokenKind::Identifier(String::from("a"));
-                let reg_prefix = TokenKind::Identifier(String::from("r"));
                 let last = tokens.last();
 
-                new_token = if let Some(TokenKind::Identifier(ident)) = last {
+                new_token = if let Some(Token::Identifier(ident)) = last {
                     match ident.as_str() {
                         "a" => {
                             let mut num: u32 = to_digit!(char);
@@ -499,10 +489,9 @@ impl Assembler {
                                 }
                             }
 
-                            let token = Token { kind: TokenKind::Address(num) };
                             tokens.pop();
 
-                            Some(token)
+                            Some(Token::Address(num))
                         }
 
                         "r" => {
@@ -528,10 +517,9 @@ impl Assembler {
                                 }
                             }
 
-                            let token = Token { kind: TokenKind::Register(num) };
                             tokens.pop();
 
-                            Some(token)
+                            Some(Token::Register(num))
                         }
 
                         _ => None,
@@ -580,8 +568,7 @@ impl Assembler {
                     let snum: String = format!("{num_a}.{num_b}");
                     let num: f32 = snum.parse().unwrap();
 
-                    let token = Token { kind: TokenKind::Number(num) };
-                    new_token = Some(token);
+                    new_token = Some(Token::Number(num));
                 }
             }
 
@@ -604,7 +591,7 @@ impl Assembler {
                         print_error!(TooLongString, "reached string size limit (2**32 max bytes)");
                     }
 
-                    let token = Token { kind: TokenKind::String(string) };
+                    let token = Token::String(string);
                     new_token = Some(token);
                 } else {
                     print_error!(UnclosedString, "unclosed string");
@@ -617,14 +604,14 @@ impl Assembler {
 
             if new_token.is_none() {
                 let kind = match char {
-                    ':' => Some(TokenKind::Colon),
+                    ':' => Some(Token::Colon),
 
                     // whitespaces and tabs are skipped in the beginning
                     _ => None
                 };
 
                 if let Some(kind) = kind {
-                    new_token = Some(Token { kind });
+                    new_token = Some(kind);
                 } // else None
             }
 
@@ -656,16 +643,15 @@ impl Assembler {
         let mut tokens: Vec<Token> = Vec::new();
 
         while let Some(token) = iter.next() {
-            let prev_kind = token.kind;
-            let kind: TokenKind = if let TokenKind::Identifier(ident) = prev_kind {
+            let prev_token = token;
+            let new_token: Token = if let Token::Identifier(ident) = prev_token {
                 // если текущий токен это идент, то проверяем его значение
-                use TokenKind::*;
+                use Token::*;
                 match ident.as_str() {
                     // регистр
                     "r" => {
                         // если есть следующий токен, и это число:
-                        if let Some(nt) = iter.next() &&
-                        let TokenKind::Number(num) = nt.kind {
+                        if let Some(Token::Number(num)) = iter.next() {
                             let index_32: u32 = if num % 1. == 0. {
                                 num as u32
                             } else {
@@ -691,8 +677,7 @@ impl Assembler {
                     // адрес
                     "a" => {
                         // если есть следующий токен, и это число:
-                        if let Some(nt) = iter.next() &&
-                        let TokenKind::Number(num) = nt.kind {
+                        if let Some(Token::Number(num)) = iter.next() {
                             let address: u32 = if num % 1. == 0. {
                                 num as u32
                             } else {
@@ -710,10 +695,10 @@ impl Assembler {
                 }
             } else {
                 // если это не идент, то оставляем как есть
-                prev_kind
+                prev_token
             };
 
-            tokens.push(Token { kind });
+            tokens.push(new_token);
         }
 
         Ok(tokens)
@@ -769,8 +754,8 @@ impl Assembler {
         }
 
         for token in tokens {
-            use TokenKind::*;
-            let kind = match token.kind {
+            use Token::*;
+            let new_token = match token {
                 Number(num) => {
                     let kaddr: u32 = get_or_add_constant!(num, Number);
                     Address(kaddr)
@@ -786,10 +771,8 @@ impl Assembler {
                     Address(kaddr)
                 }
 
-                _ => token.kind
+                _ => token
             };
-
-            let new_token = Token { kind };
 
             final_tokens.push(new_token);
         }
@@ -801,9 +784,9 @@ impl Assembler {
         let mut result: Vec<Token> = Vec::new();
 
         for gtoken in tokens {
-            let token = if let TokenKind::Identifier(ident) = &gtoken.kind
+            let token = if let Token::Identifier(ident) = &gtoken
             && let Some(mtk) = macros.get(ident) {
-                Token { kind: mtk.clone() }
+                mtk.clone()
             } else {
                 gtoken
             };
@@ -861,9 +844,9 @@ impl Assembler {
                 continue;
             };
 
-            use TokenKind::*;
+            use Token::*;
             use InstructionKind as Instr;
-            match &first_token.kind {
+            match &first_token {
                 // INSTRUCTIONS ONLY!!
                 Identifier(ident) => {
                     if labels.is_empty() {
@@ -876,8 +859,8 @@ impl Assembler {
                     macro_rules! get_arg {
                         ($pos:expr, $tok_kind:ident) => {
                             match tokens.get(1 + $pos) {
-                                Some(tok) => if let TokenKind::$tok_kind(value) = tok.kind {
-                                    Some(value)
+                                Some(tok) => if let Token::$tok_kind(value) = tok {
+                                    Some(*value)
                                 } else {
                                     None
                                 },
@@ -1208,8 +1191,7 @@ impl Assembler {
                 }
 
                 Colon => {
-                    let name = if let Some(token) = tokens.get(1)
-                    && let Identifier(ident) = &token.kind {
+                    let name = if let Some(Token::Identifier(ident)) = tokens.get(1) {
                         ident.clone()
                     } else {
                         print_error!(UnexpectedTokens, "expected an identifier after colon");
@@ -1313,15 +1295,11 @@ mod tests {
 
     macro_rules! token {
         ($kind:ident) => {
-            Token {
-                kind: TokenKind::$kind
-            }
+            Token::$kind
         };
 
         ($kind:ident, $value:expr) => {
-            Token {
-                kind: TokenKind::$kind($value)
-            }
+            Token::$kind($value)
         };
     }
 
