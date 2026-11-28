@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader};
 use execution_time::ExecutionTime;
 
 use crate::instr::InstructionKind;
-use crate::magic::{MAGIC, MAGIC_LEN};
+use crate::magic::MAGIC;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
 const MAX_STRING_SIZE: usize = 2_usize.pow(32);
@@ -330,6 +330,7 @@ pub enum ErrorKind {
     TooLongString,
     UnexpectedTokens,
     ExpectedArgument,
+    InvalidArity,
     MalformedNumber,
     InvalidOpcode,
     ReachedCodeLengthLimit,
@@ -750,7 +751,7 @@ impl Assembler {
             let first_token = if let Some(tok) = tokens.first() {
                 tok
             } else {
-                // the Vec is empty
+                // empty
                 continue;
             };
 
@@ -766,6 +767,8 @@ impl Assembler {
                     let ident = ident.to_lowercase();
                     let ident: &str = ident.as_str();
 
+                    let args_count = tokens.len() - 1;
+
                     macro_rules! get_arg {
                         ($pos:expr, $tok_kind:ident) => {
                             match tokens.get(1 + $pos) {
@@ -780,8 +783,18 @@ impl Assembler {
                         };
                     }
 
+                    macro_rules! check_arity {
+                        ($required:expr) => {
+                            if args_count != $required {
+                                print_error!(InvalidArity, format!("expected {} argument(s), but got {args_count}", $required));
+                            }
+                        };
+                    }
+
                     macro_rules! mathop3 {
                         ($kind:ident) => {{
+                            check_arity!(3);
+
                             let r0: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -806,6 +819,8 @@ impl Assembler {
 
                     macro_rules! mathop2 {
                         ($kind:ident) => {{
+                            check_arity!(2);
+
                             let r0: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -824,9 +839,14 @@ impl Assembler {
 
                     // this hell should be simplified
                     let kind = match ident {
-                        "nop" => { Instr::Nop }
+                        "nop" => {
+                            check_arity!(0);
+                            Instr::Nop
+                        }
 
                         "mov" => {
+                            check_arity!(2);
+
                             let r0: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -843,6 +863,8 @@ impl Assembler {
                         }
 
                         "movk" => {
+                            check_arity!(2);
+
                             let reg: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -865,6 +887,8 @@ impl Assembler {
                         }
 
                         "mvoid" => {
+                            check_arity!(2);
+
                             let r0: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -896,6 +920,8 @@ impl Assembler {
                         "lte" => { mathop3!(Lte) }
 
                         "test" => {
+                            check_arity!(1);
+
                             let reg: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -906,6 +932,8 @@ impl Assembler {
                         }
 
                         "goto" => {
+                            check_arity!(1);
+
                             let pos: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -916,10 +944,12 @@ impl Assembler {
                         }
 
                         "gotok" => {
+                            check_arity!(1);
+
                             let kaddr32: u32 = if let Some(value) = get_arg!(0, Address) {
                                 value
                             } else {
-                                print_error!(ExpectedArgument, "expected a constant address at argument #1");
+                                print_error!(ExpectedArgument, "expected a constant address at argument #0");
                             };
 
                             let kaddr: u16 = if let Ok(num) = kaddr32.try_into() {
@@ -932,6 +962,8 @@ impl Assembler {
                         }
 
                         "call" => {
+                            check_arity!(3);
+
                             let retr: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -954,6 +986,8 @@ impl Assembler {
                         }
 
                         "newcont" => {
+                            check_arity!(1);
+
                             let reg: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -964,6 +998,8 @@ impl Assembler {
                         }
 
                         "getcont" => {
+                            check_arity!(3);
+
                             let reg: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -986,6 +1022,8 @@ impl Assembler {
                         }
 
                         "setcont" | "updcont" => {
+                            check_arity!(3);
+
                             let cont: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -1012,6 +1050,8 @@ impl Assembler {
                         }
 
                         "delcont" => {
+                            check_arity!(2);
+
                             let cont: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -1028,6 +1068,8 @@ impl Assembler {
                         }
 
                         "dropcont" => {
+                            check_arity!(1);
+
                             let cont: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -1038,6 +1080,8 @@ impl Assembler {
                         }
 
                         "int" => {
+                            check_arity!(2);
+
                             let port: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -1053,13 +1097,18 @@ impl Assembler {
                             Instr::Int { port, msg }
                         }
 
-                        "retv" => Instr::RetV,
+                        "retv" => {
+                            check_arity!(0);
+                            Instr::RetV
+                        },
 
                         "retk" => {
+                            check_arity!(1);
+
                             let kaddr32: u32 = if let Some(value) = get_arg!(0, Address) {
                                 value
                             } else {
-                                print_error!(ExpectedArgument, "expected a constant address at argument #1");
+                                print_error!(ExpectedArgument, "expected a constant address at argument #0");
                             };
 
                             let kaddr: u16 = if let Ok(num) = kaddr32.try_into() {
@@ -1072,6 +1121,8 @@ impl Assembler {
                         }
 
                         "ret" => {
+                            check_arity!(1);
+
                             let reg: u8 = if let Some(value) = get_arg!(0, Register) {
                                 value
                             } else {
@@ -1081,7 +1132,10 @@ impl Assembler {
                             Instr::Ret { reg }
                         }
 
-                        "halt" => Instr::Halt,
+                        "halt" => {
+                            check_arity!(0);
+                            Instr::Halt
+                        },
 
                         _ => {
                             print_error!(InvalidOpcode, "invalid opcode");
