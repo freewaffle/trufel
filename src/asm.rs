@@ -421,13 +421,6 @@ impl Assembler {
                 while let Some(ch) = chars.peek() {
                     let ch = *ch;
 
-                    if ident.len() > MAX_IDENTIFIER_LENGTH {
-                        print_error!(TooLongIdentifier, format!(
-                            "too long identifier (max length is {} symbols)",
-                            MAX_IDENTIFIER_LENGTH
-                        ));
-                    }
-
                     if ch.is_ascii_digit() && (
                         ident == "r" ||
                         ident == "a"
@@ -436,6 +429,13 @@ impl Assembler {
                     }
 
                     if is_identifier!(ch) || ch.is_ascii_digit() {
+                        if ident.len() >= MAX_IDENTIFIER_LENGTH {
+                            print_error!(TooLongIdentifier, format!(
+                                "too long identifier (max length is {} symbols)",
+                                MAX_IDENTIFIER_LENGTH
+                            ));
+                        }
+
                         ident.push(ch);
                         next_char!();
                     } else {
