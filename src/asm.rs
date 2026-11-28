@@ -1268,13 +1268,13 @@ mod tests {
 
     #[test]
     fn test_token_generator() {
-        let input = "ident1 123.45 ident2 $567";
+        let input = "ident 123.45 r123 a456";
 
         let expected = vec![
-            token!(Identifier, String::from("ident1")),
+            token!(Identifier, String::from("ident")),
             token!(Number, 123.45),
-            token!(Identifier, String::from("ident2")),
-            token!(Address, 567),
+            token!(Register, 123),
+            token!(Address, 456),
         ];
 
         let asm = Assembler::new(String::from("<waffle>"));
