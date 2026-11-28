@@ -120,20 +120,9 @@ struct Class {
 impl Class {
     pub fn into_trufcode(self) -> Result<Trufcode, ErrorKind> {
         let mut chunk: Vec<u8> = Vec::new();
-        let mut code_start_offset: usize = MAGIC_LEN + 1 /* version code */;
-        let mut is_writing_code = false;
-
-        macro_rules! write_op_header {
-            () => {{
-                if !is_writing_code {
-                    code_start_offset += 1;
-                }
-            }};
-        }
 
         macro_rules! write_u32 {
             ($num:expr) => {{
-                write_op_header!();
                 chunk.push((($num >> 24) & 0xFF) as u8);
                 chunk.push((($num >> 16) & 0xFF) as u8);
                 chunk.push((($num >> 8)  & 0xFF) as u8);
@@ -143,7 +132,6 @@ impl Class {
 
         macro_rules! write_u16 {
             ($num:expr) => {{
-                write_op_header!();
                 chunk.push((($num >> 8) & 0xFF) as u8);
                 chunk.push(($num & 0xFF) as u8);
             }};
@@ -151,7 +139,6 @@ impl Class {
 
         macro_rules! write_u8 {
             ($num:expr) => {
-                write_op_header!();
                 chunk.push($num);
             };
         }
@@ -167,7 +154,7 @@ impl Class {
 
         /*
             constants type codes:
-            0 = break (end of constants table)
+            0 = break (end of table)
             1 = number
             2 = address
             3 = string
@@ -200,9 +187,8 @@ impl Class {
 
         // end the constants table
         write_u8!(0);
-
         write_u32!(self.boot_start);
-        is_writing_code = true;
+        let code_offset = chunk.len();
 
         for instr in self.code {
             let kind = instr.kind;
@@ -325,7 +311,7 @@ impl Class {
         }
 
         let trufcode = Trufcode {
-            code_len: chunk.len() - code_start_offset,
+            code_len: chunk.len() - code_offset,
             code: chunk,
         };
 
