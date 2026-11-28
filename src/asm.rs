@@ -11,6 +11,7 @@ use crate::vm::MAX_REGISTERS_COUNT;
 
 const MAX_IDENTIFIER_LENGTH: usize = 32;
 
+// must be disabled in production!!!
 const DEBUG: bool = true;
 
 const VERSION: u8 = 0;
